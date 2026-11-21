@@ -202,68 +202,223 @@ function readSettings() {
   };
 }
 
-export async function initializeSettings({onRun, onOpen}) {
+export async function initializeSettings({onVideo, onRun, onDelete, onOpen}) {
+  const source = document.getElementById("source-video");
+  const videoForm = document.getElementById("video-form");
+  const videoFile = document.getElementById("video-file");
+  const uploadButton = document.getElementById("upload-video");
+  const videoStatus = document.getElementById("video-status");
+  const savedStatus = document.getElementById("saved-experiments-status");
+  const savedList = document.getElementById("saved-experiments");
+  const toast = document.getElementById("experiment-toast");
+  let toastTimer;
+  const storageKey = "traffic-test-source";
+  const experimentName = field("label");
+  let sourceId = "default", presets = [], runs = [], defaultNoiseScale, latestRun, busy = false;
+  const api = (path, id = sourceId) => "/api/" + path + "?video=" + encodeURIComponent(id);
+
+  function notice(element, message, error = false) {
+    if (element === status) return showStatus(message, error);
+    element.textContent = message;
+    element.classList.toggle("is-error", error);
+  }
+
+  let savedValues;
+
+  function formValues() {
+    // Sliders mirror the number fields, so compare each setting once.
+    return JSON.stringify([...form.querySelectorAll("input:not([type=range]), select")].map(control => {
+      if (control.type === "checkbox") return control.checked;
+      if (control.type === "number" && Number.isFinite(control.valueAsNumber)) {
+        return control.valueAsNumber;
+      }
+      return control.value;
+    }));
+  }
+
+  function confirmDiscard(event) {
+    event.preventDefault();
+    event.returnValue = true;
+  }
+
+  function checkUnsaved() {
+    if (formValues() === savedValues) window.removeEventListener("beforeunload", confirmDiscard);
+    else window.addEventListener("beforeunload", confirmDiscard);
+  }
+
+  function reset() {
+    openButton.hidden = true;
+    const preset = presets.find(item => item.id === field("preset").value);
+    populate(preset.settings, defaultNoiseScale);
+    experimentName.setCustomValidity("");
+    savedValues = formValues();
+    checkUnsaved();
+    showStatus("Using the selected preset.");
+  }
+
+  function renderSaved() {
+    savedList.replaceChildren(...runs.map(item => {
+      const row = document.createElement("li");
+      const name = document.createElement("span");
+      name.textContent = item.label;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "delete-experiment";
+      button.textContent = "Delete";
+      button.setAttribute("aria-label", "Delete experiment " + item.label);
+      button.disabled = busy;
+      button.onclick = async () => {
+        if (!window.confirm('Delete the saved experiment "' + item.label + '"?')) return;
+        await perform(savedStatus, async () => {
+          await request(api("experiments/" + item.id), {method:"DELETE"});
+          runs = runs.filter(run => run.id !== item.id);
+          if (latestRun?.id === item.id) {
+            latestRun = null;
+            openButton.hidden = true;
+          }
+          renderSaved();
+          await onDelete(item.id);
+          notice(savedStatus, runs.length ? "" : "No saved experiments for this video.");
+          toast.textContent = "Experiment deleted.";
+          clearTimeout(toastTimer);
+          toastTimer = setTimeout(() => { toast.textContent = ""; }, 3500);
+        });
+      };
+      row.append(name, button);
+      return row;
+    }));
+  }
+
+  async function loadVideo(id, data) {
+    data ??= await request(api("settings", id));
+    await onVideo(id, data.runs);
+    sourceId = id;
+    localStorage.setItem(storageKey, id);
+    source.replaceChildren(...data.videos.map(item => new Option(item.label, item.id)));
+    source.value = id;
+    presets = data.presets;
+    runs = data.runs;
+    latestRun = null;
+    field("preset").replaceChildren(...presets.map(item => new Option(item.label, item.id)));
+    field("weights").replaceChildren(...data.weights.map(name => new Option(name, name)));
+    defaultNoiseScale = presets.find(item => item.settings.noise.std_fraction > 0)?.settings.noise.std_fraction ?? 0.16;
+    reset();
+    renderSaved();
+    notice(savedStatus, runs.length ? "" : "No saved experiments for this video.");
+    return data.active;
+  }
+
+  function setBusy(value) {
+    busy = value;
+    for (const control of [source, videoFile, uploadButton, runButton, resetButton, field("preset"), ...savedList.querySelectorAll("button")]) {
+      control.disabled = value;
+    }
+  }
+
+  async function perform(element, work) {
+    setBusy(true);
+    try {
+      await work();
+    } catch (error) {
+      notice(element, error.message, true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function watch(job, element) {
+    while (true) {
+      const result = await request("/api/jobs/" + job);
+      notice(element, result.message, result.status === "failed");
+      if (result.status === "failed") return false;
+      if (result.status === "complete") {
+        if (result.video) {
+          await loadVideo(result.video.id);
+          notice(videoStatus, result.video.label + " is ready in Simulation.");
+        } else if ((result.run.source_id ?? "default") === sourceId && !runs.some(item => item.id === result.run.id)) {
+          latestRun = result.run;
+          runs.push(latestRun);
+          onRun(latestRun);
+          renderSaved();
+          notice(savedStatus, "");
+          openButton.hidden = false;
+        }
+        return true;
+      }
+      await new Promise(resolve => setTimeout(resolve,500));
+    }
+  }
+
   try {
-    const {presets, weights, runs, active} = await request("/api/settings");
-    for (const run of runs) onRun(run);
-    field("preset").replaceChildren(...presets.map(item => new Option(item.label,item.id)));
-    field("weights").replaceChildren(...weights.map(name => new Option(name,name)));
-    const defaultNoiseScale = presets.find(item => item.settings.noise.std_fraction > 0)?.settings.noise.std_fraction ?? 0.16;
-    const reset = () => {
-      openButton.hidden = true;
-      populate(presets.find(item => item.id === field("preset").value).settings, defaultNoiseScale);
-      showStatus("Using the selected preset.");
-    };
-    field("preset").disabled = resetButton.disabled = runButton.disabled = false;
+    const initial = await request(api("settings"));
+    const preferred = localStorage.getItem(storageKey);
+    const id = initial.videos.some(item => item.id === preferred) ? preferred : "default";
+    const active = await loadVideo(id, id === "default" ? initial : undefined);
+    experimentName.addEventListener("input", () => experimentName.setCustomValidity(""));
+    form.addEventListener("input", checkUnsaved);
+    form.addEventListener("change", checkUnsaved);
     field("preset").onchange = reset;
     field("outage_mode").onchange = field("noise_mode").onchange = showConditionalFields;
     resetButton.onclick = reset;
-    reset();
-
-    let latestRun = null;
     openButton.onclick = () => onOpen(latestRun.id);
-
-    async function watch(job) {
-      while (true) {
-        const result = await request("/api/jobs/" + job);
-        showStatus(result.message, result.status === "failed");
-        if (result.status === "failed") return;
-        if (result.status === "complete") {
-          latestRun = result.run;
-          onRun(latestRun);
-          openButton.hidden = false;
-          return;
-        }
-        await new Promise(resolve => setTimeout(resolve,500));
-      }
-    }
-
-    async function runJob(start) {
-      runButton.disabled = resetButton.disabled = field("preset").disabled = true;
-      openButton.hidden = true;
+    source.onchange = () => perform(videoStatus, async () => {
+      const next = source.value;
+      notice(videoStatus, "Loading the selected video…");
       try {
-        await watch(await start());
-      } catch (error) {
-        showStatus(error.message, true);
+        await loadVideo(next);
+        notice(videoStatus, "Video ready in Simulation.");
       } finally {
-        runButton.disabled = resetButton.disabled = field("preset").disabled = false;
+        source.value = sourceId;
       }
-    }
-
-    form.onsubmit = async event => {
+    });
+    videoForm.onsubmit = event => {
       event.preventDefault();
-      if (runButton.disabled) return;
-      await runJob(async () => {
-        const settings = readSettings();
-        showStatus("Starting the experiment…");
-        const {job} = await request("/api/experiments", {
-          method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(settings),
+      const file = videoFile.files[0];
+      if (!file || !/\.mp4$/i.test(file.name)) {
+        notice(videoStatus, "Choose an MP4 file.", true);
+        return;
+      }
+      if (file.size > 100 * 1024 * 1024) {
+        notice(videoStatus, "Choose an MP4 of at most 100 MB.", true);
+        return;
+      }
+      return perform(videoStatus, async () => {
+        notice(videoStatus, "Uploading " + file.name + "…");
+        const {job} = await request("/api/videos", {
+          method:"POST", headers:{"Content-Type":"video/mp4", "X-Video-Name":encodeURIComponent(file.name)}, body:file,
         });
-        return job;
+        await watch(job, videoStatus);
+        videoFile.value = "";
       });
     };
-    if (active) await runJob(async () => active);
+    form.onsubmit = event => {
+      event.preventDefault();
+      if (busy) return;
+      const name = experimentName.value.trim().toLowerCase();
+      if (runs.some(run => run.label.trim().toLowerCase() === name)) {
+        experimentName.setCustomValidity("An experiment with that name already exists for this video.");
+        experimentName.reportValidity();
+        return;
+      }
+      experimentName.setCustomValidity("");
+      return perform(status, async () => {
+        const settings = readSettings();
+        const submittedValues = formValues();
+        openButton.hidden = true;
+        showStatus("Starting the experiment…");
+        const {job} = await request(api("experiments"), {
+          method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(settings),
+        });
+        if (await watch(job, status)) {
+          savedValues = submittedValues;
+          checkUnsaved();
+        }
+      });
+    };
+    if (active) await perform(status, () => watch(active, status));
+    else setBusy(false);
   } catch (error) {
     showStatus(error.message, true);
+    notice(videoStatus, error.message, true);
   }
 }

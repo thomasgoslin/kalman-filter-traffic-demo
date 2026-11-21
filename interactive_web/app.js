@@ -18,10 +18,12 @@ let draggingTimeline = false, editingFrame = false;
 let manifest, run, frames = [], index = [], history = null, selected = null, hovered = null;
 let frame = 0, tab = "position", runVersion = 0, trackVersion = 0;
 let pendingSeek = null, queuedSeek = null;
+let currentSource, mediaUrl;
 
 const standardCoverage = {percent:95, normal:1.96, chi2:5.991464547};
 const coverage = () => run?.coverage ?? standardCoverage;
-const runPath = item => item.settings ? "experiments/" + item.id : item.id;
+const sourcePath = id => id === "default" ? "/" : "/videos/" + id + "/";
+const runPath = item => item.settings ? "/experiments/" + item.id : sourcePath(currentSource) + item.id;
 
 async function get(path) {
   const response = await fetch(path);
@@ -164,9 +166,11 @@ function refreshInspector() {
   const record = activeRecord(), meta = index.find(item => item.id === selected);
   $("track-title").textContent = selected === null ? "Track inspector" : "Track " + selected;
   $("clear").disabled = selected === null;
-  $("analytics").hidden = !history;
+  $("analytics").hidden = selected === null;
+  $("analytics").style.visibility = history ? "" : "hidden";
   $("expand-estimate").disabled = !history;
-  $("metrics").hidden = !history;
+  $("metrics").hidden = selected === null;
+  $("metrics").style.visibility = history ? "" : "hidden";
   const current = record?.status === "expired" ? null : record;
   const missing = "—";
   $("box-size").textContent = current
@@ -336,6 +340,7 @@ async function selectTrack(id) {
 async function loadRun(id) {
   const version = ++runVersion;
   const next = manifest.runs.find(item => item.id === id);
+  if (!next) return;
   $("error").hidden = true;
   video.pause();
   frames = []; index = []; hovered = null; $("hover").hidden = true;
@@ -466,9 +471,15 @@ stage.onpointermove = event => {
   drawOverlay();
 };
 stage.onpointerleave = () => {hovered = null; $("hover").hidden = true; drawOverlay();};
+stage.onmousedown = event => {
+  if (event.button === 0 && hit(event)) event.preventDefault();
+};
 stage.onclick = event => {
   const track = hit(event);
-  if (track) selectTrack(track.id);
+  if (track) {
+    stage.focus({preventScroll:true});
+    selectTrack(track.id);
+  }
 };
 stage.onkeydown = event => {
   if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
@@ -515,23 +526,44 @@ if (video.requestVideoFrameCallback) {
 new ResizeObserver(() => { drawOverlay(); if (history) renderCharts(); }).observe(stage);
 new ResizeObserver(() => { if (history) renderCharts(); }).observe($("chart-a"));
 
-const navButtons = document.querySelectorAll(".lab-nav button");
-for (const button of navButtons) button.onclick = () => {
-  const view = button.dataset.view;
+const navLinks = [...document.querySelectorAll(".lab-nav a")];
+
+function showView(view, {focus = false} = {}) {
   for (const panel of [simulation, modelView, settingsView]) panel.hidden = panel.id !== view;
   $("scenario-control").hidden = view !== "simulation";
-  for (const item of navButtons) {
-    if (item === button) item.setAttribute("aria-current", "page");
-    else item.removeAttribute("aria-current");
+  for (const link of navLinks) {
+    if (link.dataset.view === view) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
   }
   if (view === "simulation") {
     refresh();
   } else {
     video.pause();
     if (view === "model" && manifest) populateModel(manifest);
-    $(view).focus({preventScroll:true});
+    if (focus) $(view).focus({preventScroll:true});
   }
+}
+
+function showCurrentView() {
+  const path = window.location.pathname.replace(/\/$/, "");
+  const link = navLinks.find(item => item.getAttribute("href") === path);
+  showView(link?.dataset.view ?? "simulation");
+}
+
+function navigateTo(view) {
+  const url = navLinks.find(link => link.dataset.view === view).href;
+  if (url !== window.location.href) window.history.pushState(null, "", url);
+  showView(view, {focus:true});
+}
+
+for (const link of navLinks) link.onclick = event => {
+  if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  navigateTo(link.dataset.view);
 };
+window.addEventListener("popstate", showCurrentView);
+showCurrentView();
+delete page.dataset.initialView;
 
 function matrixCard(symbol, name, values, subscript = "") {
   const card = document.createElement("div");
@@ -613,46 +645,90 @@ function populateModel(data) {
   }
 }
 
-async function init() {
-  manifest = await get("manifest.json");
-  if (manifest.version !== 1 || manifest.frame_count !== manifest.timestamps?.length || !manifest.runs?.length) {
-    throw new Error("The demo export is incomplete. Run build_interactive_export.py again.");
+const scenarioMenu = $("run");
+const mediaControls = ["run", "play", "restart", "timeline", "frame-number"].map($);
+
+function addRun(item) {
+  if (!manifest.runs.some(existing => existing.id === item.id)) {
+    manifest.runs.push(item);
+    scenarioMenu.add(new Option(item.label, item.id));
   }
+}
+
+async function loadSource(id, saved = []) {
+  if (currentSource === id) {
+    saved.forEach(addRun);
+    return;
+  }
+  const next = await get(sourcePath(id) + "manifest.json");
+  if (next.version !== 1 || next.frame_count !== next.timestamps?.length || !next.runs?.length) {
+    throw new Error("The interactive export for this video is incomplete.");
+  }
+  // A local blob allows precise seeking with the preview server.
+  const response = await fetch(new URL(next.video, window.location.origin));
+  if (!response.ok) throw new Error("The source video could not be loaded.");
+  const blob = await response.blob();
+
+  video.pause();
+  mediaControls.forEach(control => { control.disabled = true; });
+  pendingSeek = queuedSeek = null;
+  draggingTimeline = editingFrame = false;
+  frame = 0;
+  run = null;
+  manifest = next;
+  currentSource = id;
+  scenarioMenu.replaceChildren(...manifest.runs.map(item => new Option(item.label, item.id)));
+  saved.forEach(addRun);
+  timeline.max = frameNumber.max = manifest.frame_count - 1;
+  $("last-frame").textContent = frameNumber.max;
+  stage.style.aspectRatio = manifest.width + "/" + manifest.height;
+  $("outages").replaceChildren();
+  const geometry = loadRun(manifest.runs[0].id);
+  const metadata = new Promise((resolve, reject) => {
+    const ready = () => {
+      video.removeEventListener("error", failed);
+      resolve();
+    };
+    const failed = () => {
+      video.removeEventListener("loadedmetadata", ready);
+      reject(new Error("This browser could not play the source MP4."));
+    };
+    video.addEventListener("loadedmetadata", ready, {once:true});
+    video.addEventListener("error", failed, {once:true});
+  });
+  if (mediaUrl) URL.revokeObjectURL(mediaUrl);
+  mediaUrl = URL.createObjectURL(new Blob([blob], {type:"video/mp4"}));
+  video.src = mediaUrl;
+  await Promise.all([geometry, metadata]);
+  if (video.videoWidth !== manifest.width || video.videoHeight !== manifest.height) {
+    throw new Error("The source video dimensions do not match the tracking export.");
+  }
+  video.playbackRate = Number($("speed").value);
+  mediaControls.forEach(control => { control.disabled = false; });
   populateModel(manifest);
-  const scenarioMenu = $("run");
-  scenarioMenu.replaceChildren(...manifest.runs.map(item => new Option(item.label,item.id)));
+  refresh();
+}
+
+async function init() {
+  await loadSource("default");
   initializeSettings({
-    onRun: item => {
-      if (!manifest.runs.some(existing => existing.id === item.id)) {
-        manifest.runs.push(item);
-        scenarioMenu.add(new Option(item.label,item.id));
+    onVideo: loadSource,
+    onRun: addRun,
+    onDelete: async id => {
+      const selectedRun = scenarioMenu.value === id;
+      manifest.runs = manifest.runs.filter(item => item.id !== id);
+      [...scenarioMenu.options].find(option => option.value === id)?.remove();
+      if (selectedRun) {
+        scenarioMenu.value = manifest.runs[0].id;
+        await loadRun(scenarioMenu.value);
       }
+      populateModel(manifest);
     },
     onOpen: id => {
-      document.querySelector('.lab-nav button[data-view="simulation"]').click();
+      navigateTo("simulation");
       scenarioMenu.value = id;
       loadRun(id);
     },
   });
-  timeline.max = frameNumber.max = manifest.frame_count - 1;
-  $("last-frame").textContent = frameNumber.max;
-  stage.style.aspectRatio = manifest.width + "/" + manifest.height;
-  // Loading the small source clip once enables arbitrary seeks on the static Python server.
-  const media = fetch(manifest.video).then(response => {
-    if (!response.ok) throw new Error("The source video is missing. Rebuild the interactive export.");
-    return response.blob();
-  });
-  await loadRun(manifest.runs[0].id);
-  const blob = await media;
-  video.addEventListener("loadedmetadata",() => {
-    if (video.videoWidth !== manifest.width || video.videoHeight !== manifest.height) {
-      showError(new Error("The source video dimensions do not match the tracking export."));
-      return;
-    }
-    for (const id of ["run","play","restart","timeline","frame-number"]) $(id).disabled = false;
-    refresh();
-  },{once:true});
-  video.addEventListener("error",() => showError(new Error("This browser could not play the source MP4.")),{once:true});
-  video.src = URL.createObjectURL(new Blob([blob],{type:"video/mp4"}));
 }
 init().catch(showError);

@@ -4,8 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kalman Traffic Lab</title>
-  <link rel="stylesheet" href="style.css">
-  <script type="module" src="app.js"></script>
+  <script>
+    {
+      const path = location.pathname.replace(/^\/|\/$/g, "");
+      document.documentElement.dataset.initialView = ["model", "settings"].includes(path) ? path : "simulation";
+    }
+  </script>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
 </head>
 <body>
   <header class="masthead">
@@ -15,9 +21,9 @@
   <p id="error" role="alert" hidden></p>
   <div class="lab-layout">
     <nav class="lab-nav" aria-label="Lab views">
-      <button type="button" data-view="simulation" aria-controls="simulation" aria-current="page">Simulation</button>
-      <button type="button" data-view="model" aria-controls="model">Model</button>
-      <button type="button" data-view="settings" aria-controls="settings">Settings</button>
+      <a href="/simulation" data-view="simulation" aria-controls="simulation">Simulation</a>
+      <a href="/model" data-view="model" aria-controls="model">Model</a>
+      <a href="/settings" data-view="settings" aria-controls="settings">Settings</a>
     </nav>
     <main id="lab-content">
       <section id="simulation" aria-label="Simulation">
@@ -174,8 +180,24 @@
       <header class="model-heading">
         <p class="panel-label">Tracking experiments</p>
         <h2 id="settings-title">Settings</h2>
-        <p>Start from a preset, change the model or the simulated measurements, and run the tracker on the same source video. Each result appears as a separate scenario.</p>
+        <p>Start from a preset, change the model or the simulated measurements, and run the tracker on the selected video. Each result appears as a separate scenario.</p>
       </header>
+      <section class="model-section" aria-labelledby="video-library-title">
+        <h3 id="video-library-title">Source video</h3>
+        <form id="video-form" class="video-controls">
+          <div class="setting-field">
+            <label for="source-video">Active video</label>
+            <select id="source-video" disabled></select>
+          </div>
+          <div class="setting-field">
+            <label for="video-file">Choose an MP4</label>
+            <input id="video-file" type="file" accept=".mp4,video/mp4" aria-describedby="video-limits" disabled>
+          </div>
+          <button id="upload-video" type="submit" disabled>Upload and process</button>
+        </form>
+        <p id="video-limits" class="note">MP4 only. Up to 100 MB and 60 seconds.</p>
+        <p id="video-status" role="status"></p>
+      </section>
       <form id="experiment-form" novalidate>
         <div class="settings-top">
           <div class="setting-field">
@@ -340,9 +362,15 @@
           <p id="experiment-status" role="status">Loading presets…</p>
         </div>
       </form>
+      <section class="model-section" aria-labelledby="saved-experiments-title">
+        <h3 id="saved-experiments-title">Saved experiments</h3>
+        <p id="saved-experiments-status" role="status"></p>
+        <ul id="saved-experiments"></ul>
+      </section>
     </article>
     </main>
   </div>
+  <div id="experiment-toast" role="status"></div>
   <dialog id="estimate-dialog" aria-labelledby="track-title"></dialog>
 </body>
 </html>

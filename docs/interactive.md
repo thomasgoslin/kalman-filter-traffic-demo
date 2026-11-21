@@ -1,4 +1,4 @@
-# Interactive Kalman Traffic Lab
+# Interactive Kalman Traffic Test
 
 For a fresh checkout, install the Python dependencies from the [quick start](../README.md#quick-start), create the `inputs/` folder and place your clip there as `videoplayback.mp4`, and run the baseline command there once to create `outputs/traffic-demo.detections.json`. The repository includes the demo code and example screenshots.
 

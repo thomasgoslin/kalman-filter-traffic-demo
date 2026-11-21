@@ -4,6 +4,7 @@ import hashlib
 import json
 import math
 import re
+import shutil
 import subprocess
 import time
 from copy import deepcopy
@@ -27,6 +28,7 @@ from .workspace import CACHE, OUTPUTS, ROOT, VIDEO, digest
 
 EXPERIMENTS = ROOT / OUTPUTS / "experiments"
 DETECTION_CACHES = ROOT / OUTPUTS / "experiment-detections"
+VIDEO_LIBRARY = ROOT / OUTPUTS / "videos"
 MATRIX_SHAPES = {"F": (6, 6), "H": (4, 6), "Q": (6, 6), "R": (4, 4), "P0": (6, 6),
                  "b": (6,), "initial_velocity": (2,)}
 
@@ -66,13 +68,16 @@ def matrix(value, name, shape):
 
 
 class Experiments:
-    def __init__(self):
-        self.manifest = read_json(ROOT / OUTPUTS / "interactive/manifest.json")
-        self.source = ROOT / VIDEO
-        self.source_hash = digest(VIDEO)
-        if self.source_hash != self.manifest["source_sha256"]:
+    def __init__(self, source_id="default"):
+        self.source_id = source_id
+        folder = ROOT / OUTPUTS / "interactive" if source_id == "default" else VIDEO_LIBRARY / source_id
+        self.manifest = read_json(folder / "manifest.json")
+        self.source = ROOT / VIDEO if source_id == "default" else folder / "source.mp4"
+        cache = ROOT / CACHE if source_id == "default" else folder / "detections.json"
+        self.source_hash = self.manifest["source_sha256"]
+        if source_id == "default" and digest(self.source) != self.source_hash:
             raise ValueError("The preview uses a different video. Run python -m traffic_lab.export first.")
-        self.frames, detector = read_cache(ROOT / CACHE, self.source_hash)
+        self.frames, detector = read_cache(cache, self.source_hash)
         self.detector = dict(detector, weights=Path(detector["weights"]).name)
 
     def weights(self):
@@ -118,14 +123,73 @@ class Experiments:
             })
         return presets
 
-    def saved_runs(self):
-        runs = []
+    def runs_for_video_hash(self):
         for path in EXPERIMENTS.glob("*/run.json"):
             if re.fullmatch(r"[a-f0-9]{32}", path.parent.name):
-                run = read_json(path)
+                try:
+                    run = read_json(path)
+                except FileNotFoundError:
+                    continue
                 if run.get("source_sha256") == self.source_hash:
-                    runs.append(run)
-        return sorted(runs, key=lambda item: item["created"])
+                    yield run
+
+    def saved_runs(self):
+        return sorted((run for run in self.runs_for_video_hash() if self.owns(run)),
+                      key=lambda item: item["created"])
+
+    def unshared_detection_caches(self, run):
+        detector = run["settings"]["detector"]
+        # The same encoded video can appear under more than one source ID.
+        if any(other["id"] != run["id"] and other["settings"]["detector"] == detector
+               for other in self.runs_for_video_hash()):
+            return
+        for path in DETECTION_CACHES.glob("*.json"):
+            if not re.fullmatch(r"[a-f0-9]{64}", path.stem) or path.is_symlink():
+                continue
+            try:
+                identity = read_json(path).get("identity", {})
+            except (FileNotFoundError, json.JSONDecodeError):
+                continue
+            if identity.get("video_sha256") == self.source_hash and identity.get("detector") == detector:
+                yield path
+
+    def ensure_unique_name(self, label):
+        name = label.strip().casefold()
+        if any(run["label"].strip().casefold() == name for run in self.saved_runs()):
+            raise ValueError("An experiment with that name already exists for this video.")
+
+    def owns(self, run):
+        return (run.get("source_id", "default") == self.source_id
+                and run.get("source_sha256") == self.source_hash)
+
+    def delete(self, identifier):
+        if not re.fullmatch(r"[a-f0-9]{32}", identifier):
+            return False
+        folder = EXPERIMENTS / identifier
+        if folder.is_symlink():
+            return False
+        try:
+            run = read_json(folder / "run.json")
+        except FileNotFoundError:
+            return False
+        if not self.owns(run):
+            return False
+
+        caches = list(self.unshared_detection_caches(run))
+        deleted = folder.with_name("." + identifier + "-deleted")
+        folder.rename(deleted)
+        moved = []
+        try:
+            for path in caches:
+                path.rename(deleted / path.name)
+                moved.append(path)
+        except OSError:
+            for path in moved:
+                (deleted / path.name).rename(path)
+            deleted.rename(folder)
+            raise
+        shutil.rmtree(deleted)
+        return True
 
     def validate(self, raw):
         label = raw["label"]
@@ -208,7 +272,7 @@ class Experiments:
             frames, _ = read_cache(cache, self.source_hash)
             return frames
         report("Loading detector weights…")
-        frames = self.run_detector(weights, settings, report)
+        frames = run_detector(self.source, self.manifest, weights, settings, report)
         with TemporaryDirectory(dir=DETECTION_CACHES) as temporary:
             staged = Path(temporary) / "detections.json"
             write_json(staged, {
@@ -216,33 +280,6 @@ class Experiments:
                 "frames": frames,
             })
             staged.replace(cache)
-        return frames
-
-    def run_detector(self, weights, settings, report):
-        from ultralytics import YOLO
-
-        model = YOLO(str(weights))
-        width, height = self.manifest["width"], self.manifest["height"]
-        frame_bytes = width * height * 3
-        command = ["ffmpeg", "-v", "error", "-nostdin", "-i", str(self.source),
-                   "-map", "0:v:0", "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"]
-        frames = []
-        with subprocess.Popen(command, stdout=subprocess.PIPE) as decoder:
-            try:
-                while raw := decoder.stdout.read(frame_bytes):
-                    if len(raw) != frame_bytes:
-                        raise ValueError("Could not decode a complete source frame.")
-                    rgb = np.frombuffer(raw, dtype=np.uint8).reshape(height, width, 3)
-                    boxes = detect(model, rgb, settings)
-                    index = len(frames)
-                    frames.append({"frame": index, "detections": [asdict(box) for box in boxes]})
-                    if index % 12 == 0:
-                        report(f"Running detector: {index + 1} / {len(self.frames)} frames.")
-                if decoder.wait() != 0 or len(frames) != len(self.frames):
-                    raise ValueError("Fresh detections did not match the source frame count.")
-            finally:
-                if decoder.poll() is None:
-                    decoder.terminate()
         return frames
 
     def run(self, identifier, settings, report):
@@ -276,6 +313,7 @@ class Experiments:
                 probability = settings["coverage"] / 100
                 run.update(
                     label=settings["label"], settings=settings, source_sha256=self.source_hash,
+                    source_id=self.source_id,
                     created=time.time(), coverage={
                         "percent": settings["coverage"], "normal": float(norm.ppf((1 + probability) / 2)),
                         "chi2": -2 * math.log1p(-probability),
@@ -286,3 +324,31 @@ class Experiments:
         except (FloatingPointError, np.linalg.LinAlgError) as error:
             raise ValueError("The filter became numerically unstable. Check F, H, and the covariances.") from error
         return run
+
+
+def run_detector(source, manifest, weights, settings, report):
+    from ultralytics import YOLO
+
+    model = YOLO(str(weights))
+    width, height = manifest["width"], manifest["height"]
+    frame_bytes = width * height * 3
+    command = ["ffmpeg", "-v", "error", "-nostdin", "-i", str(source),
+               "-map", "0:v:0", "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"]
+    frames = []
+    with subprocess.Popen(command, stdout=subprocess.PIPE) as decoder:
+        try:
+            while raw := decoder.stdout.read(frame_bytes):
+                if len(raw) != frame_bytes:
+                    raise ValueError("Could not decode a complete source frame.")
+                rgb = np.frombuffer(raw, dtype=np.uint8).reshape(height, width, 3)
+                boxes = detect(model, rgb, settings)
+                index = len(frames)
+                frames.append({"frame": index, "detections": [asdict(box) for box in boxes]})
+                if index % 12 == 0:
+                    report(f"Running detector: {index + 1} / {manifest['frame_count']} frames.")
+            if decoder.wait() != 0 or len(frames) != manifest["frame_count"]:
+                raise ValueError("Fresh detections did not match the source frame count.")
+        finally:
+            if decoder.poll() is None:
+                decoder.terminate()
+    return frames

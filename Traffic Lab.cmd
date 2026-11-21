@@ -1,10 +1,10 @@
 @echo off
 setlocal
-title Kalman Traffic Lab
+title Kalman Traffic Test
 
 :menu
 echo(
-echo Kalman Traffic Lab
+echo Kalman Traffic Test
 echo http://127.0.0.1:8000/
 echo(
 echo   1  Start

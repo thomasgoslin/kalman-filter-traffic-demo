@@ -1,4 +1,4 @@
-# Kalman Traffic Lab
+# Kalman Traffic Test
 
 An interactive browser lab for teaching the **linear Kalman filter** with traffic footage. YOLO supplies bounding-box observations. The filter estimates each track's box center, size, velocity, and uncertainty.
 
@@ -46,6 +46,8 @@ The weights may download on the first YOLO pass. Source video and local weights 
 1. Choose a **Starting preset** and name the experiment. Use the sliders, exact number fields, and **?** help buttons to explore the parameters. **Reset to preset** restores the form values.
 2. Change the outage mode, seeds, or Gaussian measurement noise. **Tracking and display** contains detector settings, matching and track lifetime controls, and the uncertainty display percentage. **State-space matrices and initial velocity** contains the filter matrices, per-frame offset, and initial velocity.
 3. Choose **Run experiment**, then **Open in Simulation**. The result is saved as a separate local scenario alongside the four presets.
+
+Use **Source video** in Settings to upload an MP4 (up to 60 seconds and 100 MB) or switch between clips. Uploads use the default YOLO weights from `inputs/` and are processed once before their presets become available. **Saved experiments** lists the active clip’s custom runs and lets you delete them.
 
 The standard scenarios are exported once and loaded as you switch between them. The local server computes custom runs on demand. Matching detector settings reuse cached readings. Changing detector settings can require a fresh YOLO pass using local weights.
 
