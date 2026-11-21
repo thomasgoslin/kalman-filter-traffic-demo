@@ -16,13 +16,13 @@ class PresentationOverlay:
         self.dropouts = dropouts
         self.colors = colors
         scale = max(0.28, min(width / 1100, 1.35))
-        self.height = round(138 * scale)
+        self.height = round(100 * scale)
         self.margin = round(24 * scale)
         self.title_font = ImageFont.load_default(size=round(32 * scale))
         self.body_font = ImageFont.load_default(size=round(21 * scale))
         self.body_y = round(47 * scale)
-        self.legend_y = round(76 * scale)
-        self.bar_y = round(112 * scale)
+        self.legend_y = round(23 * scale)
+        self.bar_y = round(74 * scale)
 
     def add_to(self, frame, index, withheld):
         """Add space above the image without resizing or drawing over it."""
@@ -30,24 +30,29 @@ class PresentationOverlay:
         composite.paste(frame, (0, self.height))
         draw = ImageDraw.Draw(composite)
         accent = STATUS_OFFLINE if withheld else STATUS_ONLINE
-        draw.text((self.margin, round(self.height * 0.07)), "DETECTOR",
+        draw.text((self.margin, round(self.margin * 0.4)), "DETECTOR",
                   font=self.title_font, fill=accent)
         draw.text((self.margin, self.body_y), f"Source frame {index}",
                   font=self.body_font, fill="#F0F3F8")
 
-        x = self.margin
-        for text, kind in (
+        legend = (
             ("Kalman forecast", "forecast"),
             ("Detector measurement", "detector"),
             ("Kalman update", "update"),
-        ):
+        )
+        swatch = round(self.margin * 0.9)
+        swatch_gap = max(2, self.margin // 4)
+        text_widths = [round(draw.textlength(text, font=self.body_font)) for text, _ in legend]
+        legend_width = sum(text_widths) + len(legend) * (swatch + swatch_gap)
+        legend_width += (len(legend) - 1) * self.margin
+        x = self.width - self.margin - legend_width
+        line_y = self.legend_y + round(self.body_font.size * 0.6)
+        for (text, kind), text_width in zip(legend, text_widths):
             color = self.colors[kind]
-            swatch = round(self.margin * 0.9)
-            line_y = self.legend_y + round(self.body_font.size * 0.6)
             draw.line((x, line_y, x + swatch, line_y), fill=color, width=max(1, swatch // 6))
-            x += swatch + max(2, self.margin // 4)
+            x += swatch + swatch_gap
             draw.text((x, self.legend_y), text, font=self.body_font, fill=color)
-            x += round(draw.textlength(text, font=self.body_font)) + self.margin
+            x += text_width + self.margin
 
         if self.frame_span:
             self._draw_timeline(draw, index)
