@@ -56,7 +56,7 @@ function Sync-Preview {
         if ($LASTEXITCODE -ne 0) { throw 'The interactive export failed.' }
     }
     $source = Join-Path $PSScriptRoot 'interactive_web'
-    foreach ($asset in 'index.html', 'style.css', 'app.js', 'settings.js') {
+    foreach ($asset in 'index.html', 'style.css', 'app.js', 'settings.js', 'experiment-api.js') {
         Copy-Item -LiteralPath (Join-Path $source $asset) -Destination $preview -Force
     }
 }

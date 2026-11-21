@@ -68,14 +68,23 @@ def matrix(value, name, shape):
 
 
 class Experiments:
-    def __init__(self, source_id="default"):
+    def __init__(self, source_id="default", *, classroom=None):
         self.source_id = source_id
-        folder = ROOT / OUTPUTS / "interactive" if source_id == "default" else VIDEO_LIBRARY / source_id
+        if classroom is not None:
+            folder = classroom
+            self.source = None
+            cache = folder / "detections.json"
+        elif source_id == "default":
+            folder = ROOT / OUTPUTS / "interactive"
+            self.source = ROOT / VIDEO
+            cache = ROOT / CACHE
+        else:
+            folder = VIDEO_LIBRARY / source_id
+            self.source = folder / "source.mp4"
+            cache = folder / "detections.json"
         self.manifest = read_json(folder / "manifest.json")
-        self.source = ROOT / VIDEO if source_id == "default" else folder / "source.mp4"
-        cache = ROOT / CACHE if source_id == "default" else folder / "detections.json"
         self.source_hash = self.manifest["source_sha256"]
-        if source_id == "default" and digest(self.source) != self.source_hash:
+        if classroom is None and source_id == "default" and digest(self.source) != self.source_hash:
             raise ValueError("The preview uses a different video. Run python -m traffic_lab.export first.")
         self.frames, detector = read_cache(cache, self.source_hash)
         self.detector = dict(detector, weights=Path(detector["weights"]).name)
@@ -287,6 +296,15 @@ class Experiments:
             raise ValueError("The source video changed. Rebuild the browser export and restart the preview.")
         frames = self.detector_frames(settings["detector"], report)
         report("Running the Kalman filter…")
+        EXPERIMENTS.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(prefix=".experiment-", dir=EXPERIMENTS) as temporary:
+            folder = Path(temporary) / "run"
+            run = self.simulate(folder, identifier, settings, frames)
+            write_json(folder / "run.json", run)
+            folder.rename(EXPERIMENTS / identifier)
+        return run
+
+    def simulate(self, folder, identifier, settings, frames):
         outage, noise, association = (settings[key] for key in ("outage", "noise", "association"))
         fps = self.manifest["fps"]
         if outage["mode"] == "seeded":
@@ -304,23 +322,17 @@ class Experiments:
             sensor_noise_std=noise["std_fraction"], sensor_noise_probability=noise["probability"],
             sensor_noise_seed=noise["seed"],
         )
-        EXPERIMENTS.mkdir(parents=True, exist_ok=True)
         try:
-            with TemporaryDirectory(prefix=".experiment-", dir=EXPERIMENTS) as temporary:
-                folder = Path(temporary) / "run"
-                with np.errstate(over="raise", invalid="raise", divide="raise"):
-                    run = export_run(folder, identifier, [], frames, fps, setup=(args, dropouts, schedule, tracker))
-                probability = settings["coverage"] / 100
-                run.update(
-                    label=settings["label"], settings=settings, source_sha256=self.source_hash,
-                    source_id=self.source_id,
-                    created=time.time(), coverage={
-                        "percent": settings["coverage"], "normal": float(norm.ppf((1 + probability) / 2)),
-                        "chi2": -2 * math.log1p(-probability),
-                    },
-                )
-                write_json(folder / "run.json", run)
-                folder.rename(EXPERIMENTS / identifier)
+            with np.errstate(over="raise", invalid="raise", divide="raise"):
+                run = export_run(folder, identifier, [], frames, fps, setup=(args, dropouts, schedule, tracker))
+            probability = settings["coverage"] / 100
+            run.update(
+                label=settings["label"], settings=settings, source_sha256=self.source_hash,
+                source_id=self.source_id, created=time.time(), coverage={
+                    "percent": settings["coverage"], "normal": float(norm.ppf((1 + probability) / 2)),
+                    "chi2": -2 * math.log1p(-probability),
+                },
+            )
         except (FloatingPointError, np.linalg.LinAlgError) as error:
             raise ValueError("The filter became numerically unstable. Check F, H, and the covariances.") from error
         return run

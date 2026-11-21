@@ -1,3 +1,5 @@
+import {request} from "./experiment-api.js";
+
 const form = document.getElementById("experiment-form");
 const field = name => form.elements.namedItem(name);
 const status = document.getElementById("experiment-status");
@@ -80,16 +82,6 @@ for (const slider of sliders) {
   slider.setAttribute("aria-describedby", number.getAttribute("aria-describedby"));
   slider.oninput = () => { number.value = slider.value; };
   number.addEventListener("input", () => syncSlider(slider));
-}
-
-async function request(path, options) {
-  const response = await fetch(path, options);
-  if (!(response.headers.get("Content-Type") ?? "").includes("application/json")) {
-    throw new Error("Start the Traffic Lab with its launcher to run experiments.");
-  }
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.message);
-  return body;
 }
 
 function showStatus(message, error = false) {

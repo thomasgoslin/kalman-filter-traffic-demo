@@ -2,7 +2,7 @@
 
 An interactive browser lab for teaching the **linear Kalman filter** with traffic footage. YOLO supplies bounding-box observations. The filter estimates each track's box center, size, velocity, and uncertainty.
 
-[Quick start](#quick-start) | [Custom experiments](#custom-experiments) | [Four standard scenarios](#four-simulation-examples) | [Annotated video and frame exports](#run)
+[Open the classroom site](https://kalman-filter-traffic-demo.tmgoslin.workers.dev/) | [Quick start](#quick-start) | [Custom experiments](#custom-experiments) | [Four standard scenarios](#four-simulation-examples) | [Annotated video and frame exports](#run)
 
 ![Simulation view showing track 19 at frame 315, with a forecast ellipse and synchronized position plots](docs/demo/interactive-lab.jpg)
 
@@ -32,6 +32,53 @@ python -m traffic_lab.server
 ```
 
 The weights may download on the first YOLO pass. Source video and local weights under `inputs/`, plus generated videos, caches, and experiments under `outputs/`, stay local. The [setup guide](docs/interactive.md) covers refresh, rebuilding, and stopping the server.
+
+## Classroom mode
+
+Open the [live classroom site](https://kalman-filter-traffic-demo.tmgoslin.workers.dev/) to use the fixed clip without installing anything. The same repository also supports a laptop workflow with uploads.
+The classroom site includes the four presets, bundles the existing detections, and runs the same
+Python Kalman simulation in a browser worker. Detector settings are fixed. Custom experiments are
+stored in the browser on that device. The first run downloads the browser Python runtime.
+
+After building the interactive export in Quick start, build and preview the classroom version:
+
+```powershell
+python -m traffic_lab.classroom build
+python -m traffic_lab.classroom serve
+```
+
+Open [the classroom preview](http://127.0.0.1:8001/). The normal laptop launcher still runs on
+port 8000. Rebuild the classroom output after changing the shared viewer or simulation code.
+
+### Update the live site from main
+
+Deployment is manual. Run these commands from the repository root on the machine that has the
+classroom clip and its detection cache. Set up the
+[Cloudflare CLI](https://developers.cloudflare.com/cf/get-started/) once:
+
+```powershell
+npm install --no-save --package-lock=false cf@1.0.0-rc.2
+npx cf auth login
+```
+
+To publish the latest `main` to the same URL:
+
+```powershell
+git switch main
+git pull --ff-only
+python -m traffic_lab.export
+python -m traffic_lab.classroom build
+$revision = git rev-parse --short HEAD
+npx cf deploy ./outputs/classroom --message "Git main $revision"
+```
+
+Cloudflare publishes only `outputs/classroom`. The fixed clip and detections stay outside Git.
+Check [the live Settings page](https://kalman-filter-traffic-demo.tmgoslin.workers.dev/settings)
+after deployment.
+
+For a quick classroom exercise, start from **Short outages + noise** and keep the seed fixed.
+Run two experiments with different values of the observation covariance `R`. Compare how strongly
+the green analysis follows the yellow measurements for one clearly visible car.
 
 ## Explore the lab
 
