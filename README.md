@@ -2,7 +2,7 @@
 
 An interactive browser lab for teaching the **linear Kalman filter** with traffic footage. YOLO supplies bounding-box observations. The filter estimates each track's box center, size, velocity, and uncertainty.
 
-[Open the classroom site](https://kalman-filter-traffic-demo.tmgoslin.workers.dev/) | [Quick start](#quick-start) | [Custom experiments](#custom-experiments) | [Four standard scenarios](#four-simulation-examples) | [Annotated video and frame exports](#run)
+[Open the classroom site](https://kalman-filter.tmgoslin.workers.dev/) | [Quick start](#quick-start) | [Custom experiments](#custom-experiments) | [Four standard scenarios](#four-simulation-examples) | [Annotated video and frame exports](#run)
 
 ![Simulation view showing track 19 at frame 315, with a forecast ellipse and synchronized position plots](docs/demo/interactive-lab.jpg)
 
@@ -35,7 +35,7 @@ The weights may download on the first YOLO pass. Source video and local weights 
 
 ## Classroom mode
 
-Open the [live classroom site](https://kalman-filter-traffic-demo.tmgoslin.workers.dev/) to use the fixed clip without installing anything. The same repository also supports a laptop workflow with uploads.
+Open the [live classroom site](https://kalman-filter.tmgoslin.workers.dev/) and enter the shared class PIN to use the fixed clip without installing anything. The same repository also supports a laptop workflow with uploads.
 The classroom site includes the four presets, bundles the existing detections, and runs the same
 Python Kalman simulation in a browser worker. Detector settings are fixed. Custom experiments are
 stored in the browser on that device. The first run downloads the browser Python runtime.
@@ -66,7 +66,14 @@ The workflow uses the repository secret `CLOUDFLARE_API_TOKEN` and the repositor
 To deploy manually, use `npm ci`, `npx cf auth login`, `npm run build:classroom`, and
 `npm run deploy:classroom`.
 
-Only `outputs/classroom` is deployed. Personal inputs, uploads, and generated outputs stay
+The live site checks the shared PIN in a Cloudflare Worker before serving the page, video, or
+data. The Worker reads the eight-digit `CLASSROOM_PIN` and a separate 64-character hexadecimal
+`CLASSROOM_SESSION_KEY` from Cloudflare secrets. Set or rotate them using a private JSON file with
+`npx cf deploy --no-provision --secrets-file <private-json-file>` after building the classroom site.
+Rotating the PIN invalidates earlier sessions. Student sessions last up to 12 hours. The PIN does
+not restrict access to the copies of the clip and detections in this public repository.
+
+Only the Worker and `outputs/classroom` are deployed. Personal inputs, uploads, and generated outputs stay
 out of Git. The committed MP4 and raw detection cache are the classroom's two fixed inputs.
 
 For a quick classroom exercise, start from **Short outages + noise** and keep the seed fixed.

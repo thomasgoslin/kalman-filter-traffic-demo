@@ -4,9 +4,11 @@
   "type": "module",
   "scripts": {
     "build:classroom": "python -m traffic_lab.classroom build",
-    "deploy:classroom": "cf deploy ./outputs/classroom --no-provision"
+    "deploy:classroom": "cf deploy --no-provision"
   },
   "devDependencies": {
-    "cf": "1.0.0-rc.2"
+    "cf": "1.0.0-rc.2",
+    "@cloudflare/vite-plugin": "2.0.0-rc.3",
+    "vite": "8.3.8"
   }
 }
