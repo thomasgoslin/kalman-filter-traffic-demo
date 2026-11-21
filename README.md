@@ -1,31 +1,65 @@
 # Kalman Traffic Lab
 
-An interactive browser demo for teaching the **linear Kalman filter** with traffic footage. A pretrained YOLO detector supplies bounding boxes, and a constant-velocity filter estimates each car's position, box size, and image-plane velocity.
+An interactive browser lab for teaching the **linear Kalman filter** with traffic footage. YOLO supplies bounding-box observations. The filter estimates each track's box center, size, velocity, and uncertainty.
 
-[Run the lab locally](docs/interactive.md) | [See the four scenarios](#four-simulation-examples) | [Render annotated clips](#run)
+[Quick start](#quick-start) | [Custom experiments](#custom-experiments) | [Four standard scenarios](#four-simulation-examples) | [Annotated video and frame exports](#run)
 
-![Kalman Traffic Lab at frame 315 with track 19 selected, a cyan uncertainty ellipse, the editable frame counter, and the Expand button above the position charts](docs/demo/interactive-lab.jpg)
+![Simulation view showing track 19 at frame 315, with a forecast ellipse and synchronized position plots](docs/demo/interactive-lab.jpg)
 
-*At frame 315 of the long-outage scenario, track 19 has gone 36 frames without a measurement. The filter still forecasts the car's position, while the ellipse and shaded bands show its growing uncertainty.*
+*During a long detector outage, the filter continues to forecast. The ellipse and chart bands show how its modeled uncertainty grows.*
 
-## What you can explore
+## Quick start
 
-- **Play and inspect the original video.** Use Space to play or pause, change speed up to 2×, or enter an exact frame in the counter beside Restart. Click a box to pin its track and open the inspector.
-- **Read the forecast and analysis side by side.** Cyan dashes show the forecast, yellow corners show the detector measurement, and a solid green rectangle shows the Kalman update. Toggle layers individually or use **Hide all**.
-- **Follow the state and its uncertainty.** The position, velocity, and trajectory views use the estimator's recorded means and covariances. The 95% center ellipse and chart bands show uncertainty under the model. Choose **Expand** for larger graphs with more readable axes, or click a time-series chart to seek to its source frame.
-- **See what happens when measurements disappear and return.** Switch among baseline tracking, short seeded outages, short outages with noisy measurements, and long outages. Matched tracks keep their IDs when detections return. Unmatched old tracks retire and their history remains available.
+Bring a local video and install **Python 3.11+**, FFmpeg, and ffprobe. Make sure both FFmpeg commands are on PATH, then install the Python packages from the repository root.
 
-- **Run custom experiments.** Open **Settings** to edit model matrices, detector settings, or outage and measurement noise parameters. Reset the form to a preset at any time and compare saved runs in Simulation.
+```powershell
+python -m pip install -r requirements.txt
+```
 
-The **Model** view connects the notation and matrices used by this tracker to the forecast and analysis steps in Algorithm 6.3 of Reich and Cotter's *Probabilistic Forecasting and Bayesian Data Assimilation*. The outage and noise scenarios are simulated.
+Create `inputs/` and save your clip as `inputs/videoplayback.mp4`. Run YOLO once to create the detection cache. The command also writes a baseline annotated video.
 
-## Open the browser demo
+```powershell
+python -m traffic_lab.render inputs/videoplayback.mp4 outputs/traffic-demo.mp4 --classes 2
+```
 
-After [creating a local detection cache](#run), double-click **Traffic Lab.cmd** on Windows and choose **Start**. Open the local URL printed by the launcher. The [interactive setup guide](docs/interactive.md) covers first-time setup and how to refresh the browser files. Keep source footage and local model weights in `inputs/`. Generated footage, telemetry, and the browser preview go in `outputs/`.
+**On Windows**, double-click **Traffic Lab.cmd**, choose **Start**, and open [the local lab](http://127.0.0.1:8000/). Start builds the four standard scenarios if their export is missing.
+
+**From a terminal**, you can build the export and start the same local server directly.
+
+```powershell
+python -m traffic_lab.export
+python -m traffic_lab.server
+```
+
+The weights may download on the first YOLO pass. Source video and local weights under `inputs/`, plus generated videos, caches, and experiments under `outputs/`, stay local. The [setup guide](docs/interactive.md) covers refresh, rebuilding, and stopping the server.
+
+## Explore the lab
+
+- **Simulation.** Play or scrub the video, enter an exact frame, and click a track. Compare the cyan forecast, yellow observation, and green analysis. Open Position, Velocity, or Trajectory and choose **Expand** for a larger graph.
+- **Model.** Follow the notation of Reich and Cotter's §6.1 and Algorithm 6.3. The view shows the forecast and analysis equations and the matrices used by the selected run.
+- **Settings.** Change the simulated outages and measurement noise, then compute a new scenario from your settings.
+
+## Custom experiments
+
+![Settings view with seeded outages, Gaussian measurement noise, sliders, and collapsed advanced controls](docs/demo/experiment-settings.jpg)
+
+1. Choose a **Starting preset** and name the experiment. Use the sliders, exact number fields, and **?** help buttons to explore the parameters. **Reset to preset** restores the form values.
+2. Change the outage mode, seeds, or Gaussian measurement noise. **Tracking and display** contains detector settings, matching and track lifetime controls, and the uncertainty display percentage. **State-space matrices and initial velocity** contains the filter matrices, per-frame offset, and initial velocity.
+3. Choose **Run experiment**, then **Open in Simulation**. The result is saved as a separate local scenario alongside the four presets.
+
+The standard scenarios are exported once and loaded as you switch between them. The local server computes custom runs on demand. Matching detector settings reuse cached readings. Changing detector settings can require a fresh YOLO pass using local weights.
 
 ## Four simulation examples
 
-All four runs use the same traffic clip, saved detector readings, and tracker code. The detector outages and measurement noise are simulated.
+| Preset | What it illustrates |
+| --- | --- |
+| Baseline | Forecast, observation, and analysis during ordinary tracking |
+| Short outages | Prediction continues through seeded measurement gaps |
+| Short outages + noise | The filter combines its forecast with occasionally perturbed detector boxes |
+| Long outages | Fixed gaps of 15, 30, 45, and 60 frames show forecast drift |
+
+<details>
+<summary>See the annotated export examples</summary>
 
 ### 1. Normal tracking
 
@@ -51,12 +85,13 @@ All four runs use the same traffic clip, saved detector readings, and tracker co
 
 **Frame 609.** This is the final frame of the 60-frame gap in a run with deliberately scheduled gaps of 15, 30, 45, and 60 frames. Several blue boxes have drifted away from the cars. A model that assumes constant image-plane velocity and carries box size forward can work over short gaps, but perspective and vehicle motion make that approximation deteriorate over time.
 
+</details>
+
 ## Run
 
-Use Python 3.11 or later and make `ffmpeg` and `ffprobe` available on PATH. Supply your own local video and use its path in place of `inputs/videoplayback.mp4` in the examples. Paths can be absolute or relative to your working directory. From the repository folder, install dependencies and run:
+Use the setup above. To export annotated PNGs alongside an MP4, run:
 
 ```powershell
-python -m pip install -r requirements.txt
 python -m traffic_lab.render inputs/videoplayback.mp4 outputs/traffic-demo.mp4 --classes 2 --frames-dir outputs/traffic-demo-frames
 ```
 
@@ -70,7 +105,7 @@ The [implementation brief](docs/implementation.md) explains the filter and its c
 
 ## Project layout
 
-- [`traffic_lab/`](traffic_lab/) contains the tracker, shared scenario presets, video renderer, and browser export.
+- [`traffic_lab/`](traffic_lab/) contains the tracker, shared presets, local experiment server, and video and browser exports.
 - [`interactive_web/`](interactive_web/) contains the static browser interface.
 - [`docs/`](docs/) contains setup instructions, technical notes, and example images.
 
