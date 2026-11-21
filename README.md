@@ -1,10 +1,25 @@
-# Kalman Filter Video Demo
+# Kalman Traffic Lab
 
-An offline teaching demo for a data assimilation seminar. A pretrained detector supplies bounding boxes, and a constant-velocity Kalman filter predicts and corrects a separate track for each object.
+An interactive browser demo for teaching the **linear Kalman filter** with traffic footage. A pretrained YOLO detector supplies bounding boxes, and a constant-velocity filter estimates each car's position, box size, and image-plane velocity.
 
-The overlay shows **cyan dashed** forecasts, **yellow corners** for detector readings, and **green solid** Kalman updates. The displayed frame number starts at zero. The tracker uses class and box overlap to associate detections with existing tracks, so crowded scenes can cause ID switches.
+[Run the lab locally](README-interactive.md) · [See the four scenarios](#four-simulation-examples) · [Render annotated clips](#run)
 
-Use the [Interactive Kalman Traffic Lab](README-interactive.md) to play the same four scenarios, select a vehicle, and inspect its forecast, analysis, and uncertainty.
+![Kalman Traffic Lab at frame 315 with track 19 selected, a cyan uncertainty ellipse over the forecast, and synchronized position charts](docs/demo/interactive-lab.jpg)
+
+*At frame 315 of the long-outage scenario, track 19 has gone 36 frames without a measurement. The filter still forecasts the car's position, while the ellipse and shaded bands show its growing uncertainty.*
+
+## What you can explore
+
+- **Play and inspect the original video.** Pause with Space, adjust playback speed, scrub the timeline, or jump to an exact source frame. Click a box to pin its track and open the inspector.
+- **Read the forecast and analysis side by side.** Cyan dashes show the forecast, yellow corners show the detector measurement, and a solid green rectangle shows the Kalman update. Toggle layers individually or use **Hide all**.
+- **Follow the state and its uncertainty.** The position, velocity, and trajectory views use the estimator's recorded means and covariances. The 95% center ellipse and chart bands show uncertainty under the model. Click a time-series chart to seek to its source frame.
+- **See what happens when measurements disappear and return.** Switch among baseline tracking, short seeded outages, short outages with noisy measurements, and long outages. Matched tracks keep their IDs when detections return. Unmatched old tracks retire and their history remains available.
+
+The lab illustrates the forecast and analysis steps in Algorithm 6.3 of Reich and Cotter's *Probabilistic Forecasting and Bayesian Data Assimilation*. The outage and noise scenarios are simulated.
+
+## Open the browser demo
+
+After [creating a local detection cache](#run), double-click **Traffic Lab.cmd** on Windows and choose **Start**. Open the local URL printed by the launcher. The [interactive setup guide](README-interactive.md) covers first-time setup and how to refresh the browser files. The original footage and generated data stay local.
 
 ## Four simulation examples
 
