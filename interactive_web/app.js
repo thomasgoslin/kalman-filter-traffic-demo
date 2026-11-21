@@ -20,6 +20,7 @@ let manifest, run, frames = [], index = [], history = null, selected = null, hov
 let frame = 0, tab = "position", runVersion = 0, trackVersion = 0;
 let pendingSeek = null, queuedSeek = null;
 let currentSource, mediaUrl;
+let track = () => {}, viewChanged = () => {}, currentView = "simulation";
 
 const standardCoverage = {percent:95, normal:1.96, chi2:5.991464547};
 const coverage = () => run?.coverage ?? standardCoverage;
@@ -34,6 +35,7 @@ async function get(path) {
 }
 
 function showError(error) {
+  track("client_error", 1, /video|MP4|dimension/i.test(error.message) ? "media" : "other");
   $("error").textContent = error.message;
   $("error").hidden = false;
 }
@@ -325,6 +327,7 @@ function renderCharts() {
 async function selectTrack(id) {
   const version = ++trackVersion;
   selected = id; history = null;
+  if (id !== null) track("track_select");
   $("track").value = id ?? "";
   refresh();
   if (id === null) return;
@@ -417,9 +420,10 @@ function togglePlay() {
 }
 
 $("play").onclick = togglePlay;
-$("restart").onclick = () => seek(0, {pause:false});
-$("speed").onchange = event => {video.playbackRate = Number(event.target.value);};
+$("restart").onclick = () => { track("seek", 1, "restart"); seek(0, {pause:false}); };
+$("speed").onchange = event => {video.playbackRate = Number(event.target.value); track("speed_change", 1, String(Number(event.target.value)));};
 timeline.oninput = () => seek(timeline.valueAsNumber, {pause:false});
+timeline.onchange = () => track("seek", 1, "timeline");
 timeline.onpointerdown = () => { draggingTimeline = true; };
 function finishTimelineDrag() {
   if (!draggingTimeline) return;
@@ -430,7 +434,7 @@ window.addEventListener("pointerup", finishTimelineDrag);
 window.addEventListener("pointercancel", finishTimelineDrag);
 frameNumber.onfocus = frameNumber.onclick = () => frameNumber.select();
 frameNumber.oninput = () => { editingFrame = true; };
-frameNumber.onchange = () => seek(frameNumber.valueAsNumber);
+frameNumber.onchange = () => { track("seek", 1, "frame_input"); seek(frameNumber.valueAsNumber); };
 frameNumber.onblur = () => {
   editingFrame = false;
   frameNumber.value = queuedSeek ?? pendingSeek ?? frame;
@@ -438,11 +442,12 @@ frameNumber.onblur = () => {
 frameNumber.onkeydown = event => {
   if (event.key === "Enter") frameNumber.blur();
 };
-$("run").onchange = event => loadRun(event.target.value);
+$("run").onchange = event => { track("scenario_change", 1, /^[a-f0-9]{32}$/.test(event.target.value) ? "custom" : "preset"); loadRun(event.target.value); };
 $("track").onchange = event => selectTrack(event.target.value ? Number(event.target.value) : null);
 $("clear").onclick = () => selectTrack(null);
 const estimateHome = estimatePanel.parentElement;
 $("expand-estimate").onclick = () => {
+  track("chart_expand");
   estimateDialog.append(estimatePanel);
   estimateDialog.showModal();
   $("close-estimate").focus({preventScroll:true});
@@ -503,12 +508,13 @@ document.addEventListener("keydown", event => {
 }, {capture:true});
 for (const button of document.querySelectorAll("[data-tab]")) button.onclick = () => {
   tab = button.dataset.tab;
+  track("chart_tab", 1, tab);
   for (const item of document.querySelectorAll("[data-tab]")) item.setAttribute("aria-pressed",String(item === button));
   renderCharts();
 };
 for (const id of ["chart-a","chart-b"]) $(id).onclick = event => {
   const canvas = event.currentTarget;
-  if (canvas.frameAt) seek(canvas.frameAt(event.clientX - canvas.getBoundingClientRect().left));
+  if (canvas.frameAt) { track("seek", 1, "chart"); seek(canvas.frameAt(event.clientX - canvas.getBoundingClientRect().left)); }
 };
 for (const event of ["play","pause","ended"]) video.addEventListener(event,() => {
   $("play").textContent = video.paused ? "Play" : "Pause";
@@ -531,6 +537,8 @@ new ResizeObserver(() => { if (history) renderCharts(); }).observe($("chart-a"))
 const navLinks = [...document.querySelectorAll(".lab-nav a")];
 
 function showView(view, {focus = false} = {}) {
+  currentView = view;
+  viewChanged(view);
   for (const panel of [simulation, modelView, settingsView]) panel.hidden = panel.id !== view;
   $("scenario-control").hidden = view !== "simulation";
   for (const link of navLinks) {
@@ -714,10 +722,16 @@ async function loadSource(id, saved = []) {
 async function init() {
   await loadSource("default");
   if (classroomApi) {
-    import("./usage.js").then(({measurePlayback}) => measurePlayback(video)).catch(() => {});
+    import("./usage.js").then(usage => {
+      usage.measurePlayback(video);
+      track = usage.reportUsage;
+      viewChanged = usage.startSession(currentView).setView;
+      video.addEventListener("ended", () => track("video_complete"));
+    }).catch(() => {});
   }
   initializeSettings({
     onVideo: loadSource,
+    track: (...args) => track(...args),
     onRun: addRun,
     onDelete: async id => {
       const selectedRun = scenarioMenu.value === id;

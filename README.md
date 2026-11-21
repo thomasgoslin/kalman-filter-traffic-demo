@@ -82,14 +82,31 @@ the green analysis follows the yellow measurements for one clearly visible car.
 
 ### Demo usage metrics
 
-The hosted site counts video starts, active playback time, and successfully saved experiments.
-Watch time counts while the video is playing in a visible tab. Site usage records contain only
-an event name, a timestamp, and a count or duration. Experiment content stays in the visitor’s browser.
+The hosted site records anonymous usage events: video starts and active playback time, pages visited and
+time on each, which controls are used (seek, speed, chart tabs, track selection), and experiment outcomes
+(started, completed, failed, duration, and the outage and noise mode). Each event carries a name, a timestamp,
+a count or duration, an optional label from a fixed list, and a random per-tab ID that is discarded when the
+tab closes. Records never include names, IP addresses, or experiment contents, which stay in the visitor’s browser. Watch time counts only
+while the video plays in a visible tab. The server rejects any event or label that is not on its allowlist
+(`site_access/usage.js`).
 
 To view the last seven days, sign in with `npx cf auth login` and run this from the repository:
 
 ```powershell
 npx cf analytics-engine sql query --body "SELECT sumIf(double1 * _sample_interval, blob1 = 'video_start') AS video_starts, round(sumIf(double1 * _sample_interval, blob1 = 'watch_time') / 60000, 2) AS watch_minutes, sumIf(double1 * _sample_interval, blob1 = 'experiment_complete') AS completed_experiments FROM kalman_demo_usage WHERE timestamp >= NOW() - INTERVAL '7' DAY FORMAT JSON"
+```
+
+Funnel and engagement queries (`blob1` = event, `blob2` = label, `blob3` = random tab ID):
+
+```powershell
+# Unique tabs, and how many reached each step
+npx cf analytics-engine sql query --body "SELECT blob1 AS event, count(DISTINCT blob3) AS tabs, sum(_sample_interval) AS events FROM kalman_demo_usage WHERE timestamp >= NOW() - INTERVAL '7' DAY GROUP BY event ORDER BY tabs DESC FORMAT JSON"
+
+# Experiments by outage and noise mode, with average duration in seconds
+npx cf analytics-engine sql query --body "SELECT blob2 AS mode, sumIf(_sample_interval, blob1 = 'experiment_complete') AS completed, sumIf(_sample_interval, blob1 = 'experiment_failed') AS failed, round(sumIf(double1 * _sample_interval, blob1 = 'experiment_duration') / sumIf(_sample_interval, blob1 = 'experiment_duration') / 1000, 1) AS avg_seconds FROM kalman_demo_usage WHERE timestamp >= NOW() - INTERVAL '7' DAY AND blob1 IN ('experiment_complete','experiment_failed','experiment_duration') GROUP BY mode FORMAT JSON"
+
+# Time spent per view, in minutes
+npx cf analytics-engine sql query --body "SELECT blob2 AS view, round(sum(double1 * _sample_interval) / 60000, 1) AS minutes FROM kalman_demo_usage WHERE timestamp >= NOW() - INTERVAL '7' DAY AND blob1 = 'view_time' GROUP BY view FORMAT JSON"
 ```
 
 ## Explore the lab

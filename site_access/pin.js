@@ -40,7 +40,7 @@ function login(message = "", status = 200) {
       ${message ? `<p role="alert">${message}</p>` : ""}
       <button type="submit">Enter site</button>
     </form>
-    <p class="usage-note">This site counts video starts, active playback time, and completed experiments in aggregate.</p>
+    <p class="usage-note">This site records anonymous usage events (pages visited, playback time, which controls are used, and experiment outcomes) under a random ID that lasts only while this tab is open. Records never include your name, IP address, or experiment contents.</p>
   </main>
 </body>
 </html>`, {

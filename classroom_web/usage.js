@@ -1,11 +1,62 @@
-export function reportUsage(event, value = 1) {
+// Random 16-hex ID with no personal data. It lasts until the tab closes and is never stored longer.
+function storedId(storageName, key) {
+  try {
+    const storage = window[storageName];
+    let id = storage.getItem(key);
+    if (!/^[a-f0-9]{16}$/.test(id ?? "")) {
+      id = Array.from(crypto.getRandomValues(new Uint8Array(8)), byte => byte.toString(16).padStart(2, "0")).join("");
+      storage.setItem(key, id);
+    }
+    return id;
+  } catch {
+    return null;
+  }
+}
+
+const sessionId = storedId("sessionStorage", "usage-session");
+try { localStorage.removeItem("usage-visitor"); } catch {} // remove a leftover ID from older builds
+
+export function reportUsage(event, value = 1, detail) {
   if (location.protocol !== "https:") return;
+  const body = {event, value};
+  if (detail) body.detail = detail;
+  if (sessionId) body.session = sessionId;
   fetch("/api/usage", {
     method: "POST",
     keepalive: true,
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({event, value}),
+    body: JSON.stringify(body),
   }).catch(() => {});
+}
+
+export function startSession(initialView) {
+  if (location.protocol !== "https:") return {setView() {}};
+  let view = initialView;
+  let since = document.hidden ? null : performance.now();
+  reportUsage("page_load", 1, innerWidth < 640 ? "phone" : innerWidth < 1024 ? "tablet" : "desktop");
+  reportUsage("page_view", 1, view);
+
+  function flush() {
+    if (since === null) return;
+    const elapsed = Math.min(3_600_000, Math.round(performance.now() - since));
+    since = null;
+    if (elapsed > 0) reportUsage("view_time", elapsed, view);
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) flush();
+    else since = performance.now();
+  });
+  window.addEventListener("pagehide", flush);
+  return {
+    setView(next) {
+      if (next === view) return;
+      flush();
+      view = next;
+      if (!document.hidden) since = performance.now();
+      reportUsage("page_view", 1, view);
+    },
+  };
 }
 
 export function measurePlayback(video) {

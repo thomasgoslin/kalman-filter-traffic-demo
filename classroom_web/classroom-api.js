@@ -1,7 +1,7 @@
 import {reportUsage} from "./usage.js";
 
 const jobs = new Map();
-let setup, database, worker, active;
+let setup, database, worker, active, activeMeta;
 
 async function loadSetup() {
   const response = await fetch("/classroom-settings.json");
@@ -36,9 +36,10 @@ async function access(mode, operation) {
 
 const normalizedName = name => name.trim().toLowerCase();
 
-function fail(job, message) {
+function fail(job, message, reason = "worker") {
   jobs.set(job, {status:"failed", message});
   active = null;
+  reportUsage("experiment_failed", 1, reason);
 }
 
 function startWorker() {
@@ -46,22 +47,23 @@ function startWorker() {
   instance.onmessage = async ({data: {job, message, result, error}}) => {
     if (job !== active) return;
     if (error) {
-      fail(job, error);
+      fail(job, error, "worker");
     } else if (result) {
       try {
         await access("readwrite", store => store.add({...result, name:normalizedName(result.run.label)}));
         jobs.set(job, {status:"complete", message:"Experiment complete.", run:result.run});
         active = null;
-        reportUsage("experiment_complete");
+        reportUsage("experiment_complete", 1, activeMeta?.mix);
+        if (activeMeta) reportUsage("experiment_duration", Math.max(1, Math.min(600_000, Math.round(performance.now() - activeMeta.startedAt))), activeMeta.mix);
       } catch (error) {
-        fail(job, error.message);
+        fail(job, error.message, /already exists/.test(error.message) ? "duplicate" : "storage");
       }
     } else {
       jobs.set(job, {status:"running", message});
     }
   };
   instance.onerror = () => {
-    if (active) fail(active, "Could not start the browser simulator.");
+    if (active) fail(active, "Could not start the browser simulator.", "worker");
     instance.terminate();
     worker = null;
   };
@@ -77,7 +79,8 @@ export async function request(path, options = {}) {
     return {...info, runs, active};
   }
   if (url.pathname === "/api/experiments" && options.method === "POST") {
-    const {label} = JSON.parse(options.body);
+    const parsed = JSON.parse(options.body);
+    const {label} = parsed;
     if (active) throw new Error("An experiment is already running.");
     if (!label.trim()) throw new Error("Enter an experiment name.");
     const existing = await access("readonly", store => store.index("name").getKey(normalizedName(label)));
@@ -86,6 +89,8 @@ export async function request(path, options = {}) {
     worker ??= startWorker();
     const job = crypto.randomUUID().replaceAll("-", "");
     active = job;
+    activeMeta = {mix:(parsed.outage?.mode ?? "none") + "+" + (parsed.noise?.std_fraction > 0 ? "gaussian" : "none"), startedAt:performance.now()};
+    reportUsage("experiment_start", 1, activeMeta.mix);
     jobs.set(job, {status:"running", message:"Preparing the experiment…"});
     worker.postMessage({job, body:options.body});
     return {job};
@@ -94,6 +99,7 @@ export async function request(path, options = {}) {
   if (job && jobs.has(job[1])) return jobs.get(job[1]);
   const deletion = url.pathname.match(/^\/api\/experiments\/([a-f0-9]{32})$/);
   if (deletion && options.method === "DELETE") {
+    reportUsage("experiment_delete");
     return access("readwrite", store => store.delete(deletion[1]));
   }
   const data = url.pathname.match(/^\/experiments\/([a-f0-9]{32})\/(.+)$/);

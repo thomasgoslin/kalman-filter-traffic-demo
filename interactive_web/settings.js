@@ -194,7 +194,7 @@ function readSettings() {
   };
 }
 
-export async function initializeSettings({onVideo, onRun, onDelete, onOpen}) {
+export async function initializeSettings({onVideo, onRun, onDelete, onOpen, track = () => {}}) {
   const source = document.getElementById("source-video");
   const videoForm = document.getElementById("video-form");
   const videoFile = document.getElementById("video-file");
@@ -376,10 +376,11 @@ export async function initializeSettings({onVideo, onRun, onDelete, onOpen}) {
       }
       return perform(videoStatus, async () => {
         notice(videoStatus, "Uploading " + file.name + "…");
+        track("video_upload", 1, "started");
         const {job} = await request("/api/videos", {
           method:"POST", headers:{"Content-Type":"video/mp4", "X-Video-Name":encodeURIComponent(file.name)}, body:file,
         });
-        await watch(job, videoStatus);
+        track("video_upload", 1, await watch(job, videoStatus) ? "complete" : "failed");
         videoFile.value = "";
       });
     };
