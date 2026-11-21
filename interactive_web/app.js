@@ -10,6 +10,7 @@ const layers = {forecast:"forecast", detection:"measurement", corrected:"update"
 const boxes = ["forecast", "detection", "corrected"];
 const overlayInputs = [...Object.values(layers), "ellipse", "ids"].map($);
 const timeline = $("timeline"), frameNumber = $("frame-number");
+const estimateDialog = $("estimate-dialog"), estimatePanel = $("estimate-panel");
 let draggingTimeline = false, editingFrame = false;
 let manifest, run, frames = [], index = [], history = null, selected = null, hovered = null;
 let frame = 0, tab = "position", runVersion = 0, trackVersion = 0;
@@ -157,6 +158,7 @@ function refreshInspector() {
   $("track-title").textContent = selected === null ? "Track inspector" : "Track " + selected;
   $("clear").disabled = selected === null;
   $("analytics").hidden = !history;
+  $("expand-estimate").disabled = !history;
   $("metrics").hidden = !history;
   const current = record?.status === "expired" ? null : record;
   const missing = "—";
@@ -213,7 +215,8 @@ function timeChart(canvas, coordinate, title, unit) {
   const surface = setupCanvas(canvas);
   if (!surface) return;
   const {ctx, width, height} = surface;
-  const plot = {left:51, top:30, right:width - 10, bottom:height - 22};
+  const textScale = estimateDialog.open ? 1.25 : 1;
+  const plot = {left:51*textScale, top:30*textScale, right:width - 10, bottom:height - 22*textScale};
   const rows = history.filter(row => row.status !== "expired");
   const first = rows[0].frame, last = Math.max(first + 1, rows.at(-1).frame);
   const px = value => plot.left + (value - first) / (last - first) * (plot.right - plot.left);
@@ -223,17 +226,22 @@ function timeChart(canvas, coordinate, title, unit) {
   const values = rows.flatMap(row => [estimate(row) - sd(row), estimate(row) + sd(row), row.x_pred?.[coordinate], row.z?.[coordinate]].filter(value => value != null));
   const min = Math.min(...values), max = Math.max(...values), pad = Math.max((max - min) * 0.07, 0.01);
   const py = value => plot.bottom - (value - min + pad) / (max - min + 2*pad) * (plot.bottom - plot.top);
-  ctx.font = "12px " + mono;
+  ctx.font = 12*textScale + "px " + mono;
   ctx.fillStyle = theme("ink");
-  ctx.fillText(title + " (" + unit + ")", 4, 15);
-  ctx.font = "10px " + mono;
+  ctx.fillText(title + " (" + unit + ")", 4, 15*textScale);
+  ctx.font = 10*textScale + "px " + mono;
   for (let i = 0; i <= 3; i++) {
     const value = min - pad + (max - min + 2*pad) * i/3, y = py(value);
     ctx.fillStyle = theme("muted-ink"); ctx.fillText(value.toFixed(coordinate >= 4 ? 1 : 0), 4, y+3);
     ctx.strokeStyle = theme("plot-grid"); ctx.beginPath(); ctx.moveTo(plot.left,y); ctx.lineTo(plot.right,y); ctx.stroke();
   }
-  ctx.textAlign = "right"; ctx.fillText(last,plot.right,height-5);
-  ctx.textAlign = "left"; ctx.fillText(first,plot.left,height-5);
+  const tickCount = estimateDialog.open ? Math.min(7, last - first + 1) : 2;
+  for (let i = 0; i < tickCount; i++) {
+    const tick = Math.round(first + (last - first) * i / (tickCount - 1));
+    ctx.textAlign = i === 0 ? "left" : i === tickCount - 1 ? "right" : "center";
+    ctx.fillText(tick, px(tick), height - 5);
+  }
+  ctx.textAlign = "left";
   ctx.save(); ctx.beginPath(); ctx.rect(plot.left,plot.top,plot.right-plot.left,plot.bottom-plot.top); ctx.clip();
   ctx.fillStyle = theme("plot-outage");
   for (const [start, end] of run.outages) ctx.fillRect(px(start),plot.top,px(end)-px(start),plot.bottom-plot.top);
@@ -264,7 +272,8 @@ function trajectory(canvas) {
   const w = Math.max(...xs) - minX + 25, h = Math.max(...ys) - minY + 25;
   const scale = Math.min((width-25)/w,(height-48)/h);
   const offsetX = (width - w*scale)/2, offsetY = 29 + (height-48 - h*scale)/2;
-  ctx.fillStyle = theme("ink"); ctx.font = "12px " + mono; ctx.fillText("Center trajectory (image pixels, y down)", 5, 15);
+  ctx.fillStyle = theme("ink"); ctx.font = (estimateDialog.open ? 15 : 12) + "px " + mono;
+  ctx.fillText("Center trajectory (image pixels, y down)", 5, estimateDialog.open ? 19 : 15);
   ctx.save(); ctx.translate(offsetX-minX*scale,offsetY-minY*scale); ctx.scale(scale,scale);
   const x = (_,state) => state[0], y = (_,state) => state[1];
   series(ctx, rows, x, y, row => row.x_pred, plotColors.forecast,{dashed:true});
@@ -409,6 +418,19 @@ frameNumber.onkeydown = event => {
 $("run").onchange = event => loadRun(event.target.value);
 $("track").onchange = event => selectTrack(event.target.value ? Number(event.target.value) : null);
 $("clear").onclick = () => selectTrack(null);
+const estimateHome = estimatePanel.parentElement;
+$("expand-estimate").onclick = () => {
+  estimateDialog.append(estimatePanel);
+  estimateDialog.showModal();
+  $("close-estimate").focus({preventScroll:true});
+  renderCharts();
+};
+$("close-estimate").onclick = () => estimateDialog.close();
+estimateDialog.addEventListener("close", () => {
+  estimateHome.append(estimatePanel);
+  $("expand-estimate").focus({preventScroll:true});
+  if (history) renderCharts();
+});
 function updateOverlayControls() {
   $("toggle-overlays").textContent = overlayInputs.some(input => input.checked) ? "Hide all" : "Show all";
   drawOverlay();
@@ -446,7 +468,7 @@ document.addEventListener("keydown", event => {
   if (playbackShortcut) {
     event.preventDefault();
     if (!event.repeat && !$("play").disabled) togglePlay();
-  } else if (event.key === "Escape") {
+  } else if (event.key === "Escape" && !estimateDialog.open) {
     selectTrack(null);
   }
 }, {capture:true});

@@ -48,11 +48,15 @@
         <label><input type="checkbox" id="ids" checked> IDs</label>
       </div>
     </section>
-    <aside aria-label="Selected vehicle analytics">
+    <aside id="estimate-panel" aria-label="Selected vehicle analytics">
       <div class="inspector">
         <div class="inspector-top">
           <div><p class="panel-label">State estimate</p><h2 id="track-title">Track inspector</h2></div>
-          <button id="clear" type="button" disabled>Clear</button>
+          <div class="inspector-actions">
+            <button id="expand-estimate" type="button" aria-haspopup="dialog" disabled>Expand</button>
+            <button id="clear" type="button" disabled>Clear</button>
+            <button id="close-estimate" type="button">Close</button>
+          </div>
         </div>
         <label class="track-label"><span>Track ID</span><select id="track" disabled><option value="">Choose a track</option></select></label>
       </div>
@@ -77,5 +81,6 @@
       </div>
     </aside>
   </main>
+  <dialog id="estimate-dialog" aria-labelledby="track-title"></dialog>
 </body>
 </html>

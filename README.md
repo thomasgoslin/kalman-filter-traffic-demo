@@ -2,17 +2,17 @@
 
 An interactive browser demo for teaching the **linear Kalman filter** with traffic footage. A pretrained YOLO detector supplies bounding boxes, and a constant-velocity filter estimates each car's position, box size, and image-plane velocity.
 
-[Run the lab locally](README-interactive.md) · [See the four scenarios](#four-simulation-examples) · [Render annotated clips](#run)
+[Run the lab locally](README-interactive.md) | [See the four scenarios](#four-simulation-examples) | [Render annotated clips](#run)
 
-![Kalman Traffic Lab at frame 315 with track 19 selected, a cyan uncertainty ellipse over the forecast, and synchronized position charts](docs/demo/interactive-lab.jpg)
+![Kalman Traffic Lab at frame 315 with track 19 selected, a cyan uncertainty ellipse, the editable frame counter, and the Expand button above the position charts](docs/demo/interactive-lab.jpg)
 
 *At frame 315 of the long-outage scenario, track 19 has gone 36 frames without a measurement. The filter still forecasts the car's position, while the ellipse and shaded bands show its growing uncertainty.*
 
 ## What you can explore
 
-- **Play and inspect the original video.** Pause with Space, adjust playback speed, scrub the timeline, or jump to an exact source frame. Click a box to pin its track and open the inspector.
+- **Play and inspect the original video.** Use Space to play or pause, change speed up to 2×, or enter an exact frame in the counter beside Restart. Click a box to pin its track and open the inspector.
 - **Read the forecast and analysis side by side.** Cyan dashes show the forecast, yellow corners show the detector measurement, and a solid green rectangle shows the Kalman update. Toggle layers individually or use **Hide all**.
-- **Follow the state and its uncertainty.** The position, velocity, and trajectory views use the estimator's recorded means and covariances. The 95% center ellipse and chart bands show uncertainty under the model. Click a time-series chart to seek to its source frame.
+- **Follow the state and its uncertainty.** The position, velocity, and trajectory views use the estimator's recorded means and covariances. The 95% center ellipse and chart bands show uncertainty under the model. Choose **Expand** for larger graphs with more readable axes, or click a time-series chart to seek to its source frame.
 - **See what happens when measurements disappear and return.** Switch among baseline tracking, short seeded outages, short outages with noisy measurements, and long outages. Matched tracks keep their IDs when detections return. Unmatched old tracks retire and their history remains available.
 
 The lab illustrates the forecast and analysis steps in Algorithm 6.3 of Reich and Cotter's *Probabilistic Forecasting and Bayesian Data Assimilation*. The outage and noise scenarios are simulated.

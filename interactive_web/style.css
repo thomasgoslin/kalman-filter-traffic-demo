@@ -234,6 +234,32 @@ aside {
 
 .inspector { padding: 14px 16px 13px; }
 .inspector-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.inspector-actions { display: flex; align-items: center; gap: 6px; }
+#expand-estimate:not(:disabled) { border-color: var(--plot-update); }
+#close-estimate { display: none; }
+#estimate-dialog {
+  width: min(1050px, calc(100% - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  color-scheme: light;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--paper-line);
+  border-top: 4px solid var(--accent);
+  box-shadow: 0 22px 80px #0009;
+}
+#estimate-dialog::backdrop {
+  background: #07120fbb;
+  backdrop-filter: blur(3px);
+}
+#estimate-dialog #estimate-panel { border: 0; box-shadow: none; animation: none; }
+#estimate-dialog #expand-estimate, #estimate-dialog #clear { display: none; }
+#estimate-dialog #close-estimate { display: inline-block; }
+#estimate-dialog #analytics { padding-inline: clamp(10px, 2.4vw, 24px); }
+#estimate-dialog .chart { height: clamp(175px, 27dvh, 310px); }
+#estimate-dialog .chart.spatial { height: clamp(300px, 58dvh, 560px); }
+
 .panel-label { color: var(--muted-ink); margin-bottom: 4px; }
 h2 { font: 600 clamp(1.55rem, 2.3vw, 2.25rem)/1.04 var(--display); letter-spacing: -.042em; }
 aside button, aside select { color: var(--ink); background: var(--paper-raised); border-color: #a4ab95; }
