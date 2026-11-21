@@ -18,12 +18,15 @@ def write_json(path, data):
     path.write_text(json.dumps(data, allow_nan=False, separators=(",", ":")), encoding="utf-8")
 
 
-def export_run(folder, name, flags, frames, fps):
-    args = scenario_parser().parse_args(flags)
-    dropouts, schedule = resolve_dropouts(args, len(frames), fps)
+def export_run(folder, name, flags, frames, fps, *, setup=None):
+    if setup is None:
+        args = scenario_parser().parse_args(flags)
+        dropouts, schedule = resolve_dropouts(args, len(frames), fps)
+        tracker = Tracker(args.min_iou, args.max_misses)
+    else:
+        args, dropouts, schedule, tracker = setup
     withheld_frames = {index for gap in dropouts for index in gap}
     rng = random.Random(args.sensor_noise_seed) if args.sensor_noise_std else None
-    tracker = Tracker(args.min_iou, args.max_misses)
     geometry = []
     histories = {}
     for frame in frames:

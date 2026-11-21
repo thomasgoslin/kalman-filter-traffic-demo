@@ -15,6 +15,8 @@ An interactive browser demo for teaching the **linear Kalman filter** with traff
 - **Follow the state and its uncertainty.** The position, velocity, and trajectory views use the estimator's recorded means and covariances. The 95% center ellipse and chart bands show uncertainty under the model. Choose **Expand** for larger graphs with more readable axes, or click a time-series chart to seek to its source frame.
 - **See what happens when measurements disappear and return.** Switch among baseline tracking, short seeded outages, short outages with noisy measurements, and long outages. Matched tracks keep their IDs when detections return. Unmatched old tracks retire and their history remains available.
 
+- **Run custom experiments.** Open **Settings** to edit model matrices, detector settings, or outage and measurement noise parameters. Reset the form to a preset at any time and compare saved runs in Simulation.
+
 The **Model** view connects the notation and matrices used by this tracker to the forecast and analysis steps in Algorithm 6.3 of Reich and Cotter's *Probabilistic Forecasting and Bayesian Data Assimilation*. The outage and noise scenarios are simulated.
 
 ## Open the browser demo
@@ -23,7 +25,7 @@ After [creating a local detection cache](#run), double-click **Traffic Lab.cmd**
 
 ## Four simulation examples
 
-All four runs use the same traffic clip, saved detector readings, and tracker code. The detector outages and measurement jitter are simulated.
+All four runs use the same traffic clip, saved detector readings, and tracker code. The detector outages and measurement noise are simulated.
 
 ### 1. Normal tracking
 

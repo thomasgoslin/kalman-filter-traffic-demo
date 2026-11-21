@@ -17,6 +17,7 @@
     <nav class="lab-nav" aria-label="Lab views">
       <button type="button" data-view="simulation" aria-controls="simulation" aria-current="page">Simulation</button>
       <button type="button" data-view="model" aria-controls="model">Model</button>
+      <button type="button" data-view="settings" aria-controls="settings">Settings</button>
     </nav>
     <main id="lab-content">
       <section id="simulation" aria-label="Simulation">
@@ -50,7 +51,7 @@
             <label class="forecast var-layer"><input type="checkbox" id="forecast" checked><span class="shape" aria-hidden="true"></span> Forecast <var>z̄<sub>k</sub><sup>f</sup></var></label>
             <label class="detector var-layer"><input type="checkbox" id="measurement" checked><span class="shape" aria-hidden="true"></span> Observation <var>y<sup>obs</sup></var></label>
             <label class="update var-layer"><input type="checkbox" id="update" checked><span class="shape" aria-hidden="true"></span> Analysis <var>z̄<sub>k</sub><sup>a</sup></var></label>
-            <label><input type="checkbox" id="ellipse" checked> 95% center ellipse</label>
+            <label><input type="checkbox" id="ellipse" checked> <span id="ellipse-label">95% center ellipse</span></label>
             <label><input type="checkbox" id="ids" checked> IDs</label>
           </div>
         </section>
@@ -75,7 +76,7 @@
             <div class="graph-key" aria-label="Graph legend">
               <span class="graph-forecast">Forecast <var>z̄<sub>k</sub><sup>f</sup></var></span>
               <span class="graph-observation" id="graph-observation">Observation <var>y<sup>obs</sup>(t<sub>k</sub>)</var></span>
-              <span class="graph-observation" id="graph-initial" hidden>Initial velocity <var>0</var></span>
+              <span class="graph-observation" id="graph-initial" hidden>Initial velocity <var id="initial-velocity-value">0</var></span>
               <span class="graph-analysis">Analysis <var>z̄<sub>k</sub><sup>a</sup></var></span>
             </div>
             <canvas id="chart-a" class="chart" role="img"></canvas>
@@ -127,7 +128,7 @@
               <mi>F</mi><msub><mi>P</mi><mi>n</mi></msub><msup><mi>F</mi><mi mathvariant="normal">T</mi></msup><mo>+</mo><msub><mi>Q</mi><mtext>step</mtext></msub>
             </math>
           </div>
-          <p>The demo uses <var>F = I + δt D</var> with <var>δt</var> equal to one source frame and <var>b = 0</var>. The transition adds each velocity component to its corresponding center coordinate and carries the size and velocity forward. The model assumes independent zero-mean Gaussian process and observation errors. The matrix <var>Q<sub>step</sub></var>, called <code>Q</code> in the code, is the covariance added at each step. It corresponds to <var>2δt Q</var> in the book.</p>
+          <p>The standard presets use <var>F = I + δt D</var> with <var>δt</var> equal to one source frame and <var>b = 0</var>. The transition adds each velocity component to its corresponding center coordinate and carries the size and velocity forward. The model assumes independent zero-mean Gaussian process and observation errors. The matrix <var>Q<sub>step</sub></var>, called <code>Q</code> in the code, is the covariance added at each step. It corresponds to <var>2δt Q</var> in the book.</p>
         </section>
 
         <section class="model-section">
@@ -148,17 +149,18 @@
             </math>
           </div>
           <p>The gain <var>K<sub>k</sub></var> converts the residual between the observed and predicted box into a state correction. The code evaluates the equivalent Joseph form for <var>P<sub>k</sub><sup>a</sup></var>. With no matched observation, the forecast is carried forward and there is no analysis at that frame.</p>
-          <p>For a new track, the first box sets the initial center and size, velocity starts at zero, and the filter assigns covariance <var>P<sub>0</sub></var>.</p>
+          <p>For a new track, the first box sets the initial center and size, velocity starts from the configured value, which is zero in the standard presets. The filter assigns covariance <var>P<sub>0</sub></var>.</p>
         </section>
 
         <section class="model-section">
           <h3>What the plots show</h3>
-          <p>The linear–Gaussian model represents each forecast and analysis by a mean <var>z̄</var> and covariance <var>P</var>. Each shaded time-series band is the current marginal interval <var>z̄<sub>i</sub> ± 1.96√P<sub>ii</sub></var>. The center ellipse uses the joint covariance of <var>(c<sub>x</sub>, c<sub>y</sub>)</var> and encloses 95% of the model’s Gaussian probability at that frame.</p>
+          <p>The linear–Gaussian model represents each forecast and analysis by a mean <var>z̄</var> and covariance <var>P</var>. Each shaded time-series band is the current marginal interval <var>z̄<sub>i</sub> ± q√P<sub>ii</sub></var>, with <var>q = 1.96</var> at 95%. The center ellipse uses the joint covariance of <var>(c<sub>x</sub>, c<sub>y</sub>)</var> and encloses the selected probability under the Gaussian model at that frame. The default is 95%.</p>
           <p>The constant-velocity model, IoU-based box matching, and simulated detector errors are choices for this demo. The uncertainty regions describe the assumed model. The footage supplies no ground-truth box centers for testing their coverage.</p>
         </section>
 
         <section class="model-section">
-          <h3>Matrices used by this export</h3>
+          <h3>Matrices used by the selected run</h3>
+          <p id="model-context" class="note"></p>
           <div id="model-matrices" class="matrix-grid"><p>Loading matrix values…</p></div>
         </section>
 
@@ -168,6 +170,177 @@
           <dl id="model-scenarios" class="model-scenarios"></dl>
         </section>
       </article>
+    <article id="settings" class="model-view settings-view" tabindex="-1" aria-labelledby="settings-title" hidden>
+      <header class="model-heading">
+        <p class="panel-label">Tracking experiments</p>
+        <h2 id="settings-title">Settings</h2>
+        <p>Start from a preset, change the model or the simulated measurements, and run the tracker on the same source video. Each result appears as a separate scenario.</p>
+      </header>
+      <form id="experiment-form" novalidate>
+        <div class="settings-top">
+          <div class="setting-field">
+            <div class="setting-caption" data-help-for="preset"><label for="setting-preset">Starting preset</label></div>
+            <select id="setting-preset" name="preset" disabled></select>
+          </div>
+          <div class="setting-field">
+            <div class="setting-caption" data-help-for="label"><label for="setting-label">Experiment name</label></div>
+            <input id="setting-label" name="label" type="text" maxlength="64" autocomplete="off">
+          </div>
+          <button id="reset-settings" type="button" disabled>Reset to preset</button>
+        </div>
+        <div class="settings-grid">
+          <fieldset>
+            <legend>Detector outages</legend>
+            <div class="setting-field">
+              <div class="setting-caption" data-help-for="outage_mode"><label for="setting-outage_mode">Outage mode</label></div>
+              <select id="setting-outage_mode" name="outage_mode">
+              <option value="none">No outages</option><option value="seeded">Seeded geometric outages</option><option value="manual">Manual frame ranges</option>
+            </select>
+            </div>
+            <div id="seeded-fields">
+              <div class="setting-field">
+                <div class="setting-caption" data-help-for="outage_seed"><label for="setting-outage_seed">Outage seed</label></div>
+                <input id="setting-outage_seed" name="outage_seed" type="number" step="1">
+              </div>
+              <div class="setting-field">
+                <div class="setting-caption" data-help-for="start_rate"><label for="setting-start_rate">Start rate per online second</label></div>
+                <input id="setting-start_rate" name="start_rate" type="number" min="0" step="any">
+              </div>
+              <div class="setting-field">
+                <div class="setting-caption" data-help-for="recovery_probability"><label for="setting-recovery_probability">Recovery probability per frame</label></div>
+                <div class="setting-range">
+                  <div class="range-track">
+                    <input type="range" data-number="recovery_probability" min="0" max="1" step="0.01" aria-label="Recovery probability per frame slider">
+                    <div class="range-bounds" aria-hidden="true"><span>0</span><span>1</span></div>
+                  </div>
+                  <input id="setting-recovery_probability" name="recovery_probability" type="number" min="0" max="1" step="any">
+                </div>
+              </div>
+              <div class="setting-field">
+                <div class="setting-caption" data-help-for="max_frames"><label for="setting-max_frames">Maximum gap in frames</label></div>
+                <input id="setting-max_frames" name="max_frames" type="number" min="1" step="1">
+              </div>
+            </div>
+            <div class="setting-field" id="manual-fields">
+              <div class="setting-caption" data-help-for="ranges"><label for="setting-ranges">Ranges</label></div>
+              <input id="setting-ranges" name="ranges" type="text" placeholder="170:185, 195:225">
+              <span class="note">Each end frame is excluded.</span>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Measurement noise</legend>
+            <div class="setting-field">
+              <div class="setting-caption" data-help-for="noise_mode"><label for="setting-noise_mode">Noise mode</label></div>
+              <select id="setting-noise_mode" name="noise_mode">
+                <option value="none">No measurement noise</option>
+                <option value="gaussian">Gaussian noise on box centers</option>
+              </select>
+            </div>
+            <div id="measurement-noise-fields" hidden>
+              <div class="setting-field">
+                <div class="setting-caption" data-help-for="noise_seed"><label for="setting-noise_seed">Measurement noise seed</label></div>
+                <input id="setting-noise_seed" name="noise_seed" type="number" step="1">
+              </div>
+              <div class="setting-field">
+                <div class="setting-caption" data-help-for="noise_probability"><label for="setting-noise_probability">Chance of shifting each box</label></div>
+                <div class="setting-range">
+                  <div class="range-track">
+                    <input type="range" data-number="noise_probability" min="0" max="1" step="0.01" aria-label="Chance of shifting each box slider">
+                    <div class="range-bounds" aria-hidden="true"><span>0</span><span>1</span></div>
+                  </div>
+                  <input id="setting-noise_probability" name="noise_probability" type="number" min="0" max="1" step="any">
+                </div>
+              </div>
+              <div class="setting-field">
+                <div class="setting-caption" data-help-for="std_fraction"><label for="setting-std_fraction">Noise scale relative to box size</label></div>
+                <div class="setting-range">
+                  <div class="range-track">
+                    <input type="range" data-number="std_fraction" min="0" max="4" step="0.01" aria-label="Noise scale relative to box size slider">
+                    <div class="range-bounds" aria-hidden="true"><span>0</span><span>4</span></div>
+                  </div>
+                  <input id="setting-std_fraction" name="std_fraction" type="number" min="0" max="4" step="any">
+                </div>
+              </div>
+            </div>
+          </fieldset>
+        </div>
+        <details class="settings-matrices settings-advanced">
+          <summary>Tracking and display</summary>
+          <div class="settings-grid">
+            <fieldset>
+              <legend>Detector</legend>
+              <div class="setting-field">
+                <div class="setting-caption" data-help-for="weights"><label for="setting-weights">Weights</label></div>
+                <select id="setting-weights" name="weights"></select>
+              </div>
+              <div class="setting-field">
+                <div class="setting-caption" data-help-for="confidence"><label for="setting-confidence">Confidence threshold</label></div>
+                <div class="setting-range">
+                  <div class="range-track">
+                    <input type="range" data-number="confidence" min="0" max="1" step="0.01" aria-label="Confidence threshold slider">
+                    <div class="range-bounds" aria-hidden="true"><span>0</span><span>1</span></div>
+                  </div>
+                  <input id="setting-confidence" name="confidence" type="number" min="0" max="1" step="any">
+                </div>
+              </div>
+              <div class="setting-field">
+                <div class="setting-caption" data-help-for="classes"><label for="setting-classes">Class IDs</label></div>
+                <input id="setting-classes" name="classes" type="text" placeholder="All classes">
+              </div>
+              <p class="note">Use comma-separated class IDs. Changing detector settings may require a fresh detection pass.</p>
+            </fieldset>
+            <fieldset>
+              <legend>Track association</legend>
+              <div class="setting-field">
+                <div class="setting-caption" data-help-for="min_iou"><label for="setting-min_iou">Minimum IoU</label></div>
+                <div class="setting-range">
+                  <div class="range-track">
+                    <input type="range" data-number="min_iou" min="0.0001" max="1" step="0.0001" aria-label="Minimum IoU slider">
+                    <div class="range-bounds" aria-hidden="true"><span>0.0001</span><span>1</span></div>
+                  </div>
+                  <input id="setting-min_iou" name="min_iou" type="number" min="0.0001" max="1" step="any">
+                </div>
+              </div>
+              <div class="setting-field">
+                <div class="setting-caption" data-help-for="online_misses"><label for="setting-online_misses">Online miss allowance</label></div>
+                <input id="setting-online_misses" name="online_misses" type="number" min="0" step="1">
+              </div>
+              <div class="setting-field">
+                <div class="setting-caption" data-help-for="max_misses"><label for="setting-max_misses">Outage miss allowance</label></div>
+                <input id="setting-max_misses" name="max_misses" type="number" min="0" step="1">
+              </div>
+              <div class="setting-field">
+                <div class="setting-caption" data-help-for="retire_unmatched"><span class="setting-check"><input id="setting-retire_unmatched" name="retire_unmatched" type="checkbox">
+                  <label for="setting-retire_unmatched">Retire unmatched tracks when readings return</label></span></div>
+              </div>
+            </fieldset>
+            <fieldset class="settings-display">
+              <legend>Display</legend>
+              <div class="setting-field">
+                <div class="setting-caption" data-help-for="coverage"><label for="setting-coverage">Uncertainty region (%)</label></div>
+                <div class="setting-range">
+                  <div class="range-track">
+                    <input type="range" data-number="coverage" min="1" max="99.99" step="0.01" aria-label="Uncertainty region (%) slider">
+                    <div class="range-bounds" aria-hidden="true"><span>1</span><span>99.99</span></div>
+                  </div>
+                  <input id="setting-coverage" name="coverage" type="number" min="1" max="99.99" step="any">
+                </div>
+              </div>
+            </fieldset>
+          </div>
+        </details>
+        <details class="settings-matrices">
+          <summary>State-space matrices and initial velocity</summary>
+          <p class="note">State order is [cₓ, c_y, w, h, vₓ, v_y]. Edit the full matrices or the initial velocity. Q and P₀ must be symmetric positive semidefinite. R must be symmetric positive definite.</p>
+          <div id="matrix-fields" class="matrix-grid"></div>
+        </details>
+        <div class="experiment-actions">
+          <button id="run-experiment" type="submit" disabled>Run experiment</button>
+          <button id="open-experiment" type="button" hidden>Open in Simulation</button>
+          <p id="experiment-status" role="status">Loading presets…</p>
+        </div>
+      </form>
+    </article>
     </main>
   </div>
   <dialog id="estimate-dialog" aria-labelledby="track-title"></dialog>

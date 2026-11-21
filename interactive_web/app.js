@@ -1,3 +1,5 @@
+import {initializeSettings} from "./settings.js";
+
 const $ = id => document.getElementById(id);
 const video = $("video"), stage = video.parentElement, overlay = $("overlay");
 const tokens = getComputedStyle(document.documentElement);
@@ -11,11 +13,15 @@ const boxes = ["forecast", "detection", "corrected"];
 const overlayInputs = [...Object.values(layers), "ellipse", "ids"].map($);
 const timeline = $("timeline"), frameNumber = $("frame-number");
 const estimateDialog = $("estimate-dialog"), estimatePanel = $("estimate-panel");
-const simulation = $("simulation"), modelView = $("model");
+const simulation = $("simulation"), modelView = $("model"), settingsView = $("settings");
 let draggingTimeline = false, editingFrame = false;
 let manifest, run, frames = [], index = [], history = null, selected = null, hovered = null;
 let frame = 0, tab = "position", runVersion = 0, trackVersion = 0;
 let pendingSeek = null, queuedSeek = null;
+
+const standardCoverage = {percent:95, normal:1.96, chi2:5.991464547};
+const coverage = () => run?.coverage ?? standardCoverage;
+const runPath = item => item.settings ? "experiments/" + item.id : item.id;
 
 async function get(path) {
   const response = await fetch(path);
@@ -56,8 +62,8 @@ function activeRecord() {
 function ellipse(ctx, state, cov, color, dashed, scale = 1) {
   const a = cov[0][0], b = cov[0][1], d = cov[1][1];
   const delta = Math.hypot(a - d, 2 * b);
-  const rx = Math.sqrt(5.991464547 * Math.max(0, (a + d + delta) / 2));
-  const ry = Math.sqrt(5.991464547 * Math.max(0, (a + d - delta) / 2));
+  const rx = Math.sqrt(coverage().chi2 * Math.max(0, (a + d + delta) / 2));
+  const ry = Math.sqrt(coverage().chi2 * Math.max(0, (a + d - delta) / 2));
   ctx.beginPath();
   ctx.setLineDash(dashed ? [5 / scale, 4 / scale] : []);
   ctx.lineWidth = 1.5 / scale;
@@ -223,7 +229,8 @@ function timeChart(canvas, coordinate, title, unit) {
   const px = value => plot.left + (value - first) / (last - first) * (plot.right - plot.left);
   canvas.frameAt = x => Math.round(first + (x - plot.left) / (plot.right - plot.left) * (last - first));
   const estimate = row => row.x_current[coordinate];
-  const sd = row => 1.96 * Math.sqrt(Math.max(0,row.P_current[coordinate][coordinate]));
+  const normal = coverage().normal;
+  const sd = row => normal * Math.sqrt(Math.max(0,row.P_current[coordinate][coordinate]));
   const values = rows.flatMap(row => [estimate(row) - sd(row), estimate(row) + sd(row), row.x_pred?.[coordinate], row.z?.[coordinate]].filter(value => value != null));
   const min = Math.min(...values), max = Math.max(...values), pad = Math.max((max - min) * 0.07, 0.01);
   const py = value => plot.bottom - (value - min + pad) / (max - min + 2*pad) * (plot.bottom - plot.top);
@@ -295,15 +302,17 @@ function renderCharts() {
   b.hidden = tab === "trajectory";
   $("graph-observation").hidden = tab === "velocity";
   $("graph-initial").hidden = tab !== "velocity";
+  const level = coverage();
+  const band = "The " + level.percent + "% band shows z̄ᵢ ± " + Number(level.normal.toFixed(3)) + "√Pᵢᵢ.";
   if (tab === "trajectory") {
     trajectory(a);
-    $("chart-note").textContent = "The horizontal axis is c_x and the vertical axis is c_y. Both are measured in pixels from the video’s top-left corner, with c_y increasing downward. The ellipse shows the 95% model region at the current frame.";
+    $("chart-note").textContent = "The horizontal axis is c_x and the vertical axis is c_y. Both are measured in pixels from the video’s top-left corner, with c_y increasing downward. The ellipse shows the " + level.percent + "% model region at the current frame.";
   } else if (tab === "position") {
     timeChart(a,0,"Horizontal center c_x","px"); timeChart(b,1,"Vertical center c_y","px");
-    $("chart-note").textContent = "The band shows z̄ᵢ ± 1.96√Pᵢᵢ at each frame. Coral shading marks a detector outage. Click a chart to seek.";
+    $("chart-note").textContent = band + " Coral shading marks a detector outage. Click a chart to seek.";
   } else {
     timeChart(a,4,"Horizontal velocity v_x","px/frame"); timeChart(b,5,"Vertical velocity v_y","px/frame");
-    $("chart-note").textContent = "The filter infers v_x and v_y from successive boxes. The band shows z̄ᵢ ± 1.96√Pᵢᵢ.";
+    $("chart-note").textContent = "The filter infers v_x and v_y from successive boxes. " + band;
   }
 }
 
@@ -314,7 +323,7 @@ async function selectTrack(id) {
   refresh();
   if (id === null) return;
   try {
-    const data = await get(run.id + "/tracks/" + id + ".json");
+    const data = await get(runPath(run) + "/tracks/" + id + ".json");
     if (version !== trackVersion) return;
     if (data.run !== run.id || data.id !== id || !data.frames?.length) throw new Error("Track history does not match this selection.");
     history = data.frames;
@@ -333,10 +342,13 @@ async function loadRun(id) {
   selectTrack(null);
   $("track").disabled = true;
   try {
-    const [geometry, tracks] = await Promise.all([get(next.id + "/frames.json"), get(next.id + "/tracks-index.json")]);
+    const [geometry, tracks] = await Promise.all([get(runPath(next) + "/frames.json"), get(runPath(next) + "/tracks-index.json")]);
     if (version !== runVersion) return;
     if (geometry.length !== manifest.frame_count) throw new Error("Simulation frame count does not match the source video.");
     run = next; frames = geometry; index = tracks;
+    $("ellipse-label").textContent = coverage().percent + "% center ellipse";
+    const initialVelocity = run.settings?.model.initial_velocity ?? [0, 0];
+    $("initial-velocity-value").textContent = "(" + initialVelocity.join(", ") + ")";
     $("track").replaceChildren(new Option("Choose a track",""),...index.map(item => new Option("ID " + item.id + " (frames " + item.first + "–" + item.last + ")",item.id)));
     $("track").disabled = !index.length;
     $("outages").replaceChildren(...run.outages.map(([start,end]) => {
@@ -505,17 +517,20 @@ new ResizeObserver(() => { if (history) renderCharts(); }).observe($("chart-a"))
 
 const navButtons = document.querySelectorAll(".lab-nav button");
 for (const button of navButtons) button.onclick = () => {
-  const showModel = button.dataset.view === "model";
-  if (showModel) video.pause();
-  simulation.hidden = showModel;
-  modelView.hidden = !showModel;
-  $("scenario-control").hidden = showModel;
+  const view = button.dataset.view;
+  for (const panel of [simulation, modelView, settingsView]) panel.hidden = panel.id !== view;
+  $("scenario-control").hidden = view !== "simulation";
   for (const item of navButtons) {
     if (item === button) item.setAttribute("aria-current", "page");
     else item.removeAttribute("aria-current");
   }
-  if (showModel) modelView.focus({preventScroll:true});
-  else refresh();
+  if (view === "simulation") {
+    refresh();
+  } else {
+    video.pause();
+    if (view === "model" && manifest) populateModel(manifest);
+    $(view).focus({preventScroll:true});
+  }
 };
 
 function matrixCard(symbol, name, values, subscript = "") {
@@ -545,39 +560,51 @@ function matrixCard(symbol, name, values, subscript = "") {
 }
 
 function scenarioDescription(item) {
-  if (!item.schedule) {
-    if (!item.outages.length) return "Cached detector readings without simulated outages or jitter.";
+  let dropout;
+  if (item.schedule) {
+    const {seed, online_wait: wait, outage_length: length} = item.schedule;
+    dropout = "Seed " + seed + ". Geometric waits with " + wait.exponential_rate_per_online_second
+      + " starts per online second. Geometric gaps have recovery probability " + length.recovery_probability_per_frame
+      + " per frame and a cap of " + length.max_frames + " frames.";
+  } else if (item.outages.length) {
     const durations = item.outages.map(([start, end]) => end - start);
-    return "Scheduled gaps of " + durations.join(", ") + " frames. The outage miss allowance is " + item.max_misses + " frames.";
+    dropout = "Scheduled gaps of " + durations.join(", ") + " frames. The outage miss allowance is "
+      + item.max_misses + " frames.";
+  } else {
+    dropout = "No simulated detector outages.";
   }
-  const {seed, online_wait: wait, outage_length: length} = item.schedule;
-  const dropout = "Seed " + seed + ". Geometric waits with " + wait.exponential_rate_per_online_second
-    + " starts per online second. Geometric gaps have recovery probability " + length.recovery_probability_per_frame
-    + " per frame and a cap of " + length.max_frames + " frames.";
   const noise = item.sensor_noise;
   if (!noise) return dropout;
-  return dropout + " Each available box center independently has a " + Math.round(100 * noise.probability)
-    + "% chance of receiving Gaussian jitter, with standard deviations of "
-    + Math.round(100 * noise.std_fraction) + "% of box width and height and seed " + noise.seed + ". The assumed R stays fixed.";
+  return dropout + " Each available box center independently has a " + 100 * noise.probability
+    + "% chance of receiving Gaussian measurement noise, with standard deviations of "
+    + 100 * noise.std_fraction + "% of box width and height and seed " + noise.seed + ". R is fixed during the run.";
 }
 
 function populateModel(data) {
-  const {F, H, Q, R, P0} = data.model;
+  const settings = run?.settings;
+  const {F, H, Q, R, P0} = settings?.model ?? data.model;
+  const offset = settings?.model.b ?? Array(6).fill(0);
+  const velocity = settings?.model.initial_velocity ?? [0, 0];
   $("model-matrices").replaceChildren(
     matrixCard("F", "State transition", F),
     matrixCard("H", "Observation operator", H),
     matrixCard("Q", "Process covariance per step", Q, "step"),
     matrixCard("R", "Observation covariance", R),
     matrixCard("P", "Initial track covariance", P0, "0"),
+    matrixCard("b", "Per-step offset", [offset]),
   );
+  $("model-context").textContent = (run?.label ?? "Standard presets") + " uses initial velocity ("
+    + velocity.join(", ") + ") pixels per frame and " + coverage().percent + "% display regions.";
   const [numerator, denominator = 1] = data.fps.split("/").map(Number);
-  const caps = [...new Set(data.runs.map(item => Math.min(item.max_misses, data.online_miss_limit ?? item.max_misses)))];
-  const overlap = [...new Set(data.runs.map(item => item.min_iou))];
+  const configuredMisses = run?.max_misses ?? data.online_miss_limit;
+  const onlineMisses = settings?.association.online_misses ?? Math.min(configuredMisses, data.online_miss_limit ?? configuredMisses);
+  const rule = settings?.association.retire_unmatched ?? true;
   $("model-tracking").textContent = "The source plays at " + (numerator / denominator).toFixed(2)
-    + " frames per second. Association uses matching classes and an IoU threshold of " + overlap.join(" / ")
-    + ". While the detector is online, the miss allowance is " + caps.join(" / ")
-    + " frames. Unmatched old tracks retire on the first frame with readings after an outage.";
+    + " frames per second. The selected scenario uses an IoU threshold of " + (run?.min_iou ?? 0.1)
+    + " and allows " + onlineMisses + " online misses and " + configuredMisses + " outage misses."
+    + (rule ? " Unmatched old tracks retire when readings return." : " The usual miss allowance applies after recovery.");
   const scenarios = $("model-scenarios");
+  scenarios.replaceChildren();
   for (const item of data.runs) {
     const title = document.createElement("dt"), description = document.createElement("dd");
     title.textContent = item.label;
@@ -592,7 +619,21 @@ async function init() {
     throw new Error("The demo export is incomplete. Run build_interactive_export.py again.");
   }
   populateModel(manifest);
-  $("run").replaceChildren(...manifest.runs.map(item => new Option(item.label,item.id)));
+  const scenarioMenu = $("run");
+  scenarioMenu.replaceChildren(...manifest.runs.map(item => new Option(item.label,item.id)));
+  initializeSettings({
+    onRun: item => {
+      if (!manifest.runs.some(existing => existing.id === item.id)) {
+        manifest.runs.push(item);
+        scenarioMenu.add(new Option(item.label,item.id));
+      }
+    },
+    onOpen: id => {
+      document.querySelector('.lab-nav button[data-view="simulation"]').click();
+      scenarioMenu.value = id;
+      loadRun(id);
+    },
+  });
   timeline.max = frameNumber.max = manifest.frame_count - 1;
   $("last-frame").textContent = frameNumber.max;
   stage.style.aspectRatio = manifest.width + "/" + manifest.height;

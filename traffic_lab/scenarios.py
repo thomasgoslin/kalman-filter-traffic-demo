@@ -66,22 +66,27 @@ def scenario_parser():
     return parser
 
 
-def seeded_outages(frame_count, fps, seed):
+def seeded_outages(
+    frame_count, fps, seed, *, start_rate=OUTAGE_START_RATE,
+    recovery_probability=OUTAGE_RECOVERY_PROBABILITY, max_frames=OUTAGE_MAX_FRAMES,
+):
     """Alternate geometric online waits and short, capped geometric outages."""
     rng = random.Random(seed)
     # The chance an exponential waiting time ends during one frame interval.
-    start_probability = -math.expm1(-OUTAGE_START_RATE / float(Fraction(fps)))
+    start_probability = -math.expm1(-start_rate / float(Fraction(fps)))
 
     def geometric(probability):
+        if probability == 1:
+            return 1
         return 1 + math.floor(math.log1p(-rng.random()) / math.log1p(-probability))
 
     dropouts = []
     cursor = 0
-    while cursor < frame_count:
+    while start_probability and cursor < frame_count:
         start = cursor + geometric(start_probability)
         if start >= frame_count:
             break
-        duration = min(geometric(OUTAGE_RECOVERY_PROBABILITY), OUTAGE_MAX_FRAMES)
+        duration = min(geometric(recovery_probability), max_frames) if recovery_probability else max_frames
         cursor = min(frame_count, start + duration)
         dropouts.append(range(start, cursor))
 
@@ -91,14 +96,14 @@ def seeded_outages(frame_count, fps, seed):
         "seed": seed,
         "online_wait": {
             "distribution": "geometric",
-            "exponential_rate_per_online_second": OUTAGE_START_RATE,
+            "exponential_rate_per_online_second": start_rate,
             "per_frame_dropout_probability": start_probability,
             "minimum_online_frames_between_outages": 1,
         },
         "outage_length": {
             "distribution": "capped geometric",
-            "recovery_probability_per_frame": OUTAGE_RECOVERY_PROBABILITY,
-            "max_frames": OUTAGE_MAX_FRAMES,
+            "recovery_probability_per_frame": recovery_probability,
+            "max_frames": max_frames,
         },
         "outages": len(dropouts),
         "withheld_frames": sum(map(len, dropouts)),

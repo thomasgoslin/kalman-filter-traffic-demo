@@ -32,13 +32,31 @@ function Get-PreviewProcess {
     Remove-Item -LiteralPath $serverState
 }
 
+function Get-LabPython {
+    $defaultPython = (Get-Command python.exe).Source
+    $candidates = @((Join-Path $PSScriptRoot '.venv/Scripts/python.exe'), $defaultPython)
+    $condaEnvs = Join-Path (Split-Path -Parent $defaultPython) 'envs'
+    if (Test-Path -LiteralPath $condaEnvs) {
+        $candidates += Get-ChildItem -LiteralPath $condaEnvs -Directory | ForEach-Object {
+            Join-Path $_.FullName 'python.exe'
+        }
+    }
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate) {
+            & $candidate -c "import importlib.util as u; raise SystemExit(not all(u.find_spec(x) for x in ('numpy','scipy','PIL','ultralytics')))"
+            if ($LASTEXITCODE -eq 0) { return $candidate }
+        }
+    }
+    throw 'Activate the Python environment with the Traffic Lab dependencies, or install requirements.txt in .venv.'
+}
+
 function Sync-Preview {
     if (-not (Test-Path -LiteralPath (Join-Path $preview 'manifest.json'))) {
-        & python (Join-Path $PSScriptRoot 'build_interactive_export.py')
+        & (Get-LabPython) (Join-Path $PSScriptRoot 'build_interactive_export.py')
         if ($LASTEXITCODE -ne 0) { throw 'The interactive export failed.' }
     }
     $source = Join-Path $PSScriptRoot 'interactive_web'
-    foreach ($asset in 'index.html', 'style.css', 'app.js') {
+    foreach ($asset in 'index.html', 'style.css', 'app.js', 'settings.js') {
         Copy-Item -LiteralPath (Join-Path $source $asset) -Destination $preview -Force
     }
 }
@@ -54,9 +72,9 @@ switch ($Action) {
         }
         Sync-Preview
         $launch = @{
-            FilePath = (Get-Command python.exe).Source
+            FilePath = (Get-LabPython)
             WorkingDirectory = $PSScriptRoot
-            ArgumentList = '-m', 'http.server', "$port", '--bind', '127.0.0.1', '--directory', 'outputs/interactive'
+            ArgumentList = '-m', 'traffic_lab.server', '--port', "$port"
             WindowStyle = 'Hidden'
             PassThru = $true
         }
@@ -65,7 +83,7 @@ switch ($Action) {
             id = $server.Id
             started = $server.StartTime.ToUniversalTime().Ticks.ToString()
         } | ConvertTo-Json | Set-Content -LiteralPath $serverState
-        for ($attempt = 0; $attempt -lt 20; $attempt++) {
+        for ($attempt = 0; $attempt -lt 60; $attempt++) {
             if (Test-PreviewPort) {
                 Write-Output "Traffic Lab is running at $url"
                 return
