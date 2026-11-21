@@ -5,12 +5,13 @@ const theme = name => tokens.getPropertyValue("--" + name).trim();
 const colors = {forecast:theme("cyan"), detection:theme("gold"), corrected:theme("green"), initialized:theme("gold")};
 const plotColors = {forecast:theme("plot-forecast"), detection:theme("plot-detector"), corrected:theme("plot-update")};
 const mono = theme("mono");
-const statusText = {updated:"Kalman update", initialized:"Initialized from detection", predicted:"Forecast only", expired:"Track expired"};
+const statusText = {updated:"Analysis", initialized:"Initialized from observation", predicted:"Forecast only", expired:"Track expired"};
 const layers = {forecast:"forecast", detection:"measurement", corrected:"update"};
 const boxes = ["forecast", "detection", "corrected"];
 const overlayInputs = [...Object.values(layers), "ellipse", "ids"].map($);
 const timeline = $("timeline"), frameNumber = $("frame-number");
 const estimateDialog = $("estimate-dialog"), estimatePanel = $("estimate-panel");
+const simulation = $("simulation"), modelView = $("model");
 let draggingTimeline = false, editingFrame = false;
 let manifest, run, frames = [], index = [], history = null, selected = null, hovered = null;
 let frame = 0, tab = "position", runVersion = 0, trackVersion = 0;
@@ -261,7 +262,7 @@ function timeChart(canvas, coordinate, title, unit) {
 
 function trajectory(canvas) {
   canvas.classList.add("spatial");
-  canvas.setAttribute("aria-label", "Center trajectory in image coordinates");
+  canvas.setAttribute("aria-label", "Bounding-box center path in c_x and c_y");
   const surface = setupCanvas(canvas);
   if (!surface) return;
   const {ctx,width,height} = surface;
@@ -273,7 +274,7 @@ function trajectory(canvas) {
   const scale = Math.min((width-25)/w,(height-48)/h);
   const offsetX = (width - w*scale)/2, offsetY = 29 + (height-48 - h*scale)/2;
   ctx.fillStyle = theme("ink"); ctx.font = (estimateDialog.open ? 15 : 12) + "px " + mono;
-  ctx.fillText("Center trajectory (image pixels, y down)", 5, estimateDialog.open ? 19 : 15);
+  ctx.fillText("Box center path (c_x, c_y)", 5, estimateDialog.open ? 19 : 15);
   ctx.save(); ctx.translate(offsetX-minX*scale,offsetY-minY*scale); ctx.scale(scale,scale);
   const x = (_,state) => state[0], y = (_,state) => state[1];
   series(ctx, rows, x, y, row => row.x_pred, plotColors.forecast,{dashed:true});
@@ -292,15 +293,17 @@ function trajectory(canvas) {
 function renderCharts() {
   const a = $("chart-a"), b = $("chart-b");
   b.hidden = tab === "trajectory";
+  $("graph-observation").hidden = tab === "velocity";
+  $("graph-initial").hidden = tab !== "velocity";
   if (tab === "trajectory") {
     trajectory(a);
-    $("chart-note").textContent = "The ellipse encloses 95% of the modeled center distribution.";
+    $("chart-note").textContent = "The horizontal axis is c_x and the vertical axis is c_y. Both are measured in pixels from the video’s top-left corner, with c_y increasing downward. The ellipse shows the 95% model region at the current frame.";
   } else if (tab === "position") {
-    timeChart(a,0,"Horizontal center","px"); timeChart(b,1,"Vertical center","px");
-    $("chart-note").textContent = "The band shows the marginal 95% model interval. Coral shading marks a detector outage. Click a chart to seek.";
+    timeChart(a,0,"Horizontal center c_x","px"); timeChart(b,1,"Vertical center c_y","px");
+    $("chart-note").textContent = "The band shows z̄ᵢ ± 1.96√Pᵢᵢ at each frame. Coral shading marks a detector outage. Click a chart to seek.";
   } else {
-    timeChart(a,4,"Horizontal velocity","px/frame"); timeChart(b,5,"Vertical velocity","px/frame");
-    $("chart-note").textContent = "Velocity is inferred from successive boxes. The band shows marginal 95% model uncertainty.";
+    timeChart(a,4,"Horizontal velocity v_x","px/frame"); timeChart(b,5,"Vertical velocity v_y","px/frame");
+    $("chart-note").textContent = "The filter infers v_x and v_y from successive boxes. The band shows z̄ᵢ ± 1.96√Pᵢᵢ.";
   }
 }
 
@@ -406,6 +409,7 @@ function finishTimelineDrag() {
 }
 window.addEventListener("pointerup", finishTimelineDrag);
 window.addEventListener("pointercancel", finishTimelineDrag);
+frameNumber.onfocus = frameNumber.onclick = () => frameNumber.select();
 frameNumber.oninput = () => { editingFrame = true; };
 frameNumber.onchange = () => seek(frameNumber.valueAsNumber);
 frameNumber.onblur = () => {
@@ -463,12 +467,12 @@ stage.onkeydown = event => {
 const page = document.documentElement;
 document.addEventListener("pointerdown", () => page.classList.remove("playback-shortcut"), {capture:true});
 document.addEventListener("keydown", event => {
-  const playbackShortcut = event.code === "Space" && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+  const playbackShortcut = !simulation.hidden && event.code === "Space" && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
   page.classList.toggle("playback-shortcut", playbackShortcut);
   if (playbackShortcut) {
     event.preventDefault();
     if (!event.repeat && !$("play").disabled) togglePlay();
-  } else if (event.key === "Escape" && !estimateDialog.open) {
+  } else if (event.key === "Escape" && !estimateDialog.open && !simulation.hidden) {
     selectTrack(null);
   }
 }, {capture:true});
@@ -499,11 +503,95 @@ if (video.requestVideoFrameCallback) {
 new ResizeObserver(() => { drawOverlay(); if (history) renderCharts(); }).observe(stage);
 new ResizeObserver(() => { if (history) renderCharts(); }).observe($("chart-a"));
 
+const navButtons = document.querySelectorAll(".lab-nav button");
+for (const button of navButtons) button.onclick = () => {
+  const showModel = button.dataset.view === "model";
+  if (showModel) video.pause();
+  simulation.hidden = showModel;
+  modelView.hidden = !showModel;
+  $("scenario-control").hidden = showModel;
+  for (const item of navButtons) {
+    if (item === button) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
+  }
+  if (showModel) modelView.focus({preventScroll:true});
+  else refresh();
+};
+
+function matrixCard(symbol, name, values, subscript = "") {
+  const card = document.createElement("div");
+  card.className = "matrix-card";
+  const heading = document.createElement("h4"), formula = document.createElement("var");
+  formula.textContent = symbol;
+  if (subscript) {
+    const sub = document.createElement("sub");
+    sub.textContent = subscript;
+    formula.append(sub);
+  }
+  heading.append(formula, " " + name);
+  const table = document.createElement("table");
+  table.setAttribute("aria-label", name + " matrix");
+  const body = table.createTBody();
+  for (const row of values) {
+    const tr = body.insertRow();
+    for (const value of row) {
+      const td = tr.insertCell();
+      td.textContent = value;
+      if (value === 0) td.className = "zero";
+    }
+  }
+  card.append(heading, table);
+  return card;
+}
+
+function scenarioDescription(item) {
+  if (!item.schedule) {
+    if (!item.outages.length) return "Cached detector readings without simulated outages or jitter.";
+    const durations = item.outages.map(([start, end]) => end - start);
+    return "Scheduled gaps of " + durations.join(", ") + " frames. The outage miss allowance is " + item.max_misses + " frames.";
+  }
+  const {seed, online_wait: wait, outage_length: length} = item.schedule;
+  const dropout = "Seed " + seed + ". Geometric waits with " + wait.exponential_rate_per_online_second
+    + " starts per online second. Geometric gaps have recovery probability " + length.recovery_probability_per_frame
+    + " per frame and a cap of " + length.max_frames + " frames.";
+  const noise = item.sensor_noise;
+  if (!noise) return dropout;
+  return dropout + " Each available box center independently has a " + Math.round(100 * noise.probability)
+    + "% chance of receiving Gaussian jitter, with standard deviations of "
+    + Math.round(100 * noise.std_fraction) + "% of box width and height and seed " + noise.seed + ". The assumed R stays fixed.";
+}
+
+function populateModel(data) {
+  const {F, H, Q, R, P0} = data.model;
+  $("model-matrices").replaceChildren(
+    matrixCard("F", "State transition", F),
+    matrixCard("H", "Observation operator", H),
+    matrixCard("Q", "Process covariance per step", Q, "step"),
+    matrixCard("R", "Observation covariance", R),
+    matrixCard("P", "Initial track covariance", P0, "0"),
+  );
+  const [numerator, denominator = 1] = data.fps.split("/").map(Number);
+  const caps = [...new Set(data.runs.map(item => Math.min(item.max_misses, data.online_miss_limit ?? item.max_misses)))];
+  const overlap = [...new Set(data.runs.map(item => item.min_iou))];
+  $("model-tracking").textContent = "The source plays at " + (numerator / denominator).toFixed(2)
+    + " frames per second. Association uses matching classes and an IoU threshold of " + overlap.join(" / ")
+    + ". While the detector is online, the miss allowance is " + caps.join(" / ")
+    + " frames. Unmatched old tracks retire on the first frame with readings after an outage.";
+  const scenarios = $("model-scenarios");
+  for (const item of data.runs) {
+    const title = document.createElement("dt"), description = document.createElement("dd");
+    title.textContent = item.label;
+    description.textContent = scenarioDescription(item);
+    scenarios.append(title, description);
+  }
+}
+
 async function init() {
   manifest = await get("manifest.json");
   if (manifest.version !== 1 || manifest.frame_count !== manifest.timestamps?.length || !manifest.runs?.length) {
     throw new Error("The demo export is incomplete. Run build_interactive_export.py again.");
   }
+  populateModel(manifest);
   $("run").replaceChildren(...manifest.runs.map(item => new Option(item.label,item.id)));
   timeline.max = frameNumber.max = manifest.frame_count - 1;
   $("last-frame").textContent = frameNumber.max;

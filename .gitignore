@@ -12,6 +12,7 @@ __pycache__/
 frame_*.png
 runs/
 /outputs/
+/inputs/
 .env
 .env.*
 !.env.example

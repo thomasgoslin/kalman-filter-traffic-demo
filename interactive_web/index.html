@@ -10,77 +10,166 @@
 <body>
   <header class="masthead">
     <div class="heading"><h1>Kalman Traffic Lab</h1></div>
-    <label class="scenario"><span>Simulation</span><select id="run" disabled></select></label>
+    <label id="scenario-control" class="scenario"><span>Scenario</span><select id="run" disabled></select></label>
   </header>
   <p id="error" role="alert" hidden></p>
-  <main>
-    <section class="player" aria-label="Traffic video">
-      <div class="video-bar">
-        <span id="detector" class="badge">Loading</span>
-        <div class="frame-tools">
-          <label class="frame-readout">
-            <span>Frame</span>
-            <input id="frame-number" type="number" min="0" step="1" value="0" aria-label="Frame number" disabled>
-            <span class="frame-limit">/ <span id="last-frame">—</span></span>
-          </label>
-          <button id="restart" type="button" disabled>Restart</button>
-        </div>
-      </div>
-      <div class="stage" tabindex="0" aria-label="Traffic video. Arrow keys step through frames.">
-        <video id="video" playsinline muted preload="auto"></video>
-        <canvas id="overlay" aria-hidden="true"></canvas>
-        <div id="hover" class="tooltip" hidden></div>
-      </div>
-      <div class="controls">
-        <button id="play" type="button" aria-keyshortcuts="Space" disabled>Play</button>
-        <label class="speed">Speed<select id="speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
-      </div>
-      <div class="scrubber">
-        <div id="outages" class="outages" aria-hidden="true"></div>
-        <input id="timeline" type="range" min="0" max="0" value="0" aria-label="Source frame" disabled>
-      </div>
-      <div class="layers" aria-label="Overlay layers">
-        <button id="toggle-overlays" type="button">Hide all</button>
-        <label class="forecast"><input type="checkbox" id="forecast" checked><span class="shape" aria-hidden="true"></span> Forecast</label>
-        <label class="detector"><input type="checkbox" id="measurement" checked><span class="shape" aria-hidden="true"></span> Measurement</label>
-        <label class="update"><input type="checkbox" id="update" checked><span class="shape" aria-hidden="true"></span> Update</label>
-        <label><input type="checkbox" id="ellipse" checked> 95% center ellipse</label>
-        <label><input type="checkbox" id="ids" checked> IDs</label>
-      </div>
-    </section>
-    <aside id="estimate-panel" aria-label="Selected vehicle analytics">
-      <div class="inspector">
-        <div class="inspector-top">
-          <div><p class="panel-label">State estimate</p><h2 id="track-title">Track inspector</h2></div>
-          <div class="inspector-actions">
-            <button id="expand-estimate" type="button" aria-haspopup="dialog" disabled>Expand</button>
-            <button id="clear" type="button" disabled>Clear</button>
-            <button id="close-estimate" type="button">Close</button>
+  <div class="lab-layout">
+    <nav class="lab-nav" aria-label="Lab views">
+      <button type="button" data-view="simulation" aria-controls="simulation" aria-current="page">Simulation</button>
+      <button type="button" data-view="model" aria-controls="model">Model</button>
+    </nav>
+    <main id="lab-content">
+      <section id="simulation" aria-label="Simulation">
+        <section class="player" aria-label="Traffic video">
+          <div class="video-bar">
+            <span id="detector" class="badge">Loading</span>
+            <div class="frame-tools">
+              <label class="frame-readout">
+                <span>Frame</span>
+                <input id="frame-number" type="number" min="0" step="1" value="0" aria-label="Frame number" disabled>
+                <span class="frame-limit">/ <span id="last-frame">—</span></span>
+              </label>
+              <button id="restart" type="button" disabled>Restart</button>
+            </div>
           </div>
-        </div>
-        <label class="track-label"><span>Track ID</span><select id="track" disabled><option value="">Choose a track</option></select></label>
-      </div>
-      <div id="analytics" hidden>
-        <div class="tabs" aria-label="Track graphs">
-          <button type="button" data-tab="position" aria-pressed="true">Position</button>
-          <button type="button" data-tab="velocity" aria-pressed="false">Velocity</button>
-          <button type="button" data-tab="trajectory" aria-pressed="false">Trajectory</button>
-        </div>
-        <canvas id="chart-a" class="chart" role="img"></canvas>
-        <canvas id="chart-b" class="chart" role="img"></canvas>
-        <p id="chart-note" class="note"></p>
-      </div>
-      <div class="frame-details">
-        <p id="status">Click a car or choose a track by ID.</p>
-        <dl id="metrics" hidden>
-          <dt>Box size</dt><dd id="box-size"></dd>
-          <dt>Center σ (x / y)</dt><dd id="center-sigma"></dd>
-          <dt>Consecutive misses</dt><dd id="miss-count"></dd>
-          <dt>Detector score</dt><dd id="detector-score"></dd>
-        </dl>
-      </div>
-    </aside>
-  </main>
+          <div class="stage" tabindex="0" aria-label="Traffic video. Arrow keys step through frames.">
+            <video id="video" playsinline muted preload="auto"></video>
+            <canvas id="overlay" aria-hidden="true"></canvas>
+            <div id="hover" class="tooltip" hidden></div>
+          </div>
+          <div class="controls">
+            <button id="play" type="button" aria-keyshortcuts="Space" disabled>Play</button>
+            <label class="speed">Speed<select id="speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
+          </div>
+          <div class="scrubber">
+            <div id="outages" class="outages" aria-hidden="true"></div>
+            <input id="timeline" type="range" min="0" max="0" value="0" aria-label="Source frame" disabled>
+          </div>
+          <div class="layers" aria-label="Overlay layers">
+            <button id="toggle-overlays" type="button">Hide all</button>
+            <label class="forecast var-layer"><input type="checkbox" id="forecast" checked><span class="shape" aria-hidden="true"></span> Forecast <var>z̄<sub>k</sub><sup>f</sup></var></label>
+            <label class="detector var-layer"><input type="checkbox" id="measurement" checked><span class="shape" aria-hidden="true"></span> Observation <var>y<sup>obs</sup></var></label>
+            <label class="update var-layer"><input type="checkbox" id="update" checked><span class="shape" aria-hidden="true"></span> Analysis <var>z̄<sub>k</sub><sup>a</sup></var></label>
+            <label><input type="checkbox" id="ellipse" checked> 95% center ellipse</label>
+            <label><input type="checkbox" id="ids" checked> IDs</label>
+          </div>
+        </section>
+        <aside id="estimate-panel" aria-label="Selected vehicle analytics">
+          <div class="inspector">
+            <div class="inspector-top">
+              <div><p class="panel-label">State estimate</p><h2 id="track-title">Track inspector</h2></div>
+              <div class="inspector-actions">
+                <button id="expand-estimate" type="button" aria-haspopup="dialog" disabled>Expand</button>
+                <button id="clear" type="button" disabled>Clear</button>
+                <button id="close-estimate" type="button">Close</button>
+              </div>
+            </div>
+            <label class="track-label"><span>Track ID</span><select id="track" disabled><option value="">Choose a track</option></select></label>
+          </div>
+          <div id="analytics" hidden>
+            <div class="tabs" aria-label="Track graphs">
+              <button type="button" data-tab="position" aria-pressed="true">Position</button>
+              <button type="button" data-tab="velocity" aria-pressed="false">Velocity</button>
+              <button type="button" data-tab="trajectory" aria-pressed="false">Trajectory</button>
+            </div>
+            <div class="graph-key" aria-label="Graph legend">
+              <span class="graph-forecast">Forecast <var>z̄<sub>k</sub><sup>f</sup></var></span>
+              <span class="graph-observation" id="graph-observation">Observation <var>y<sup>obs</sup>(t<sub>k</sub>)</var></span>
+              <span class="graph-observation" id="graph-initial" hidden>Initial velocity <var>0</var></span>
+              <span class="graph-analysis">Analysis <var>z̄<sub>k</sub><sup>a</sup></var></span>
+            </div>
+            <canvas id="chart-a" class="chart" role="img"></canvas>
+            <canvas id="chart-b" class="chart" role="img"></canvas>
+            <p id="chart-note" class="note"></p>
+          </div>
+          <div class="frame-details">
+            <p id="status">Click a car or choose a track by ID.</p>
+            <dl id="metrics" hidden>
+              <dt>Box size (<var>w</var>, <var>h</var>)</dt><dd id="box-size"></dd>
+              <dt>Center SD (<var>σ<sub>x</sub></var>, <var>σ<sub>y</sub></var>)</dt><dd id="center-sigma"></dd>
+              <dt>Consecutive misses</dt><dd id="miss-count"></dd>
+              <dt>Detector score</dt><dd id="detector-score"></dd>
+            </dl>
+          </div>
+        </aside>
+      </section>
+      <article id="model" class="model-view" tabindex="-1" aria-labelledby="model-title" hidden>
+        <header class="model-heading">
+          <p class="panel-label">REICH AND COTTER §6.1 / ALGORITHM 6.3</p>
+          <h2 id="model-title">Model and notation</h2>
+          <p>Each vehicle has its own linear Kalman filter. The forecast propagates its mean and covariance. A matched detector reading turns that forecast into an analysis.</p>
+        </header>
+
+        <section class="model-section">
+          <h3>State and observation</h3>
+          <div class="model-equation">
+            <math display="block">
+              <msup><mi>Z</mi><mi>n</mi></msup><mo>=</mo><msup>
+                <mrow><mo>(</mo><msub><mi>c</mi><mi>x</mi></msub><mo>,</mo><msub><mi>c</mi><mi>y</mi></msub><mo>,</mo>
+                <mi>w</mi><mo>,</mo><mi>h</mi><mo>,</mo><msub><mi>v</mi><mi>x</mi></msub><mo>,</mo><msub><mi>v</mi><mi>y</mi></msub><mo>)</mo></mrow>
+                <mi mathvariant="normal">T</mi>
+              </msup>
+              <mo>,</mo><mspace width="1em"></mspace>
+              <msup><mi>Y</mi><mi>k</mi></msup><mo>=</mo><mi>H</mi><msub><mi>z</mi><mtext>ref</mtext></msub><mo>(</mo><msub><mi>t</mi><mi>k</mi></msub><mo>)</mo><mo>+</mo><msup><mi>Σ</mi><mi>k</mi></msup>
+            </math>
+          </div>
+          <p>The state <var>Z<sup>n</sup></var> contains the box center and size in pixels, plus the center velocity in pixels per frame. The observation operator <var>H</var> selects the first four components. A YOLO box supplies the realized observation <var>y<sup>obs</sup>(t<sub>k</sub>)</var> once it is assigned to a track.</p>
+          <p>The book uses <var>n</var> for model steps and <var>k</var> for observation times. The player uses one source-frame index for both displays. Every frame advances the model by one step, and frames with a matched box supply observations.</p>
+        </section>
+
+        <section class="model-section">
+          <h3>Forecast <span class="equation-ref">(6.6), (6.10)–(6.11)</span></h3>
+          <div class="model-equation">
+            <math display="block">
+              <msub><mi>z̄</mi><mrow><mi>n</mi><mo>+</mo><mn>1</mn></mrow></msub><mo>=</mo><mi>F</mi><msub><mi>z̄</mi><mi>n</mi></msub><mo>,</mo>
+              <mspace width="1em"></mspace>
+              <msub><mi>P</mi><mrow><mi>n</mi><mo>+</mo><mn>1</mn></mrow></msub><mo>=</mo>
+              <mi>F</mi><msub><mi>P</mi><mi>n</mi></msub><msup><mi>F</mi><mi mathvariant="normal">T</mi></msup><mo>+</mo><msub><mi>Q</mi><mtext>step</mtext></msub>
+            </math>
+          </div>
+          <p>The demo uses <var>F = I + δt D</var> with <var>δt</var> equal to one source frame and <var>b = 0</var>. The transition adds each velocity component to its corresponding center coordinate and carries the size and velocity forward. The model assumes independent zero-mean Gaussian process and observation errors. The matrix <var>Q<sub>step</sub></var>, called <code>Q</code> in the code, is the covariance added at each step. It corresponds to <var>2δt Q</var> in the book.</p>
+        </section>
+
+        <section class="model-section">
+          <h3>Analysis <span class="equation-ref">(6.12)–(6.13)</span></h3>
+          <div class="model-equation">
+            <math display="block">
+              <msub><mi>K</mi><mi>k</mi></msub><mo>=</mo><msubsup><mi>P</mi><mi>k</mi><mi>f</mi></msubsup><msup><mi>H</mi><mi mathvariant="normal">T</mi></msup><msup>
+                <mrow><mo>(</mo><mi>H</mi><msubsup><mi>P</mi><mi>k</mi><mi>f</mi></msubsup><msup><mi>H</mi><mi mathvariant="normal">T</mi></msup><mo>+</mo><mi>R</mi><mo>)</mo></mrow>
+                <mrow><mo>−</mo><mn>1</mn></mrow>
+              </msup>
+            </math>
+            <math display="block">
+              <msubsup><mi>z̄</mi><mi>k</mi><mi>a</mi></msubsup><mo>=</mo><msubsup><mi>z̄</mi><mi>k</mi><mi>f</mi></msubsup><mo>+</mo><msub><mi>K</mi><mi>k</mi></msub>
+              <mo>(</mo><msup><mi>y</mi><mtext>obs</mtext></msup><mo>(</mo><msub><mi>t</mi><mi>k</mi></msub><mo>)</mo><mo>−</mo><mi>H</mi><msubsup><mi>z̄</mi><mi>k</mi><mi>f</mi></msubsup><mo>)</mo>
+            </math>
+            <math display="block">
+              <msubsup><mi>P</mi><mi>k</mi><mi>a</mi></msubsup><mo>=</mo><msubsup><mi>P</mi><mi>k</mi><mi>f</mi></msubsup><mo>−</mo><msub><mi>K</mi><mi>k</mi></msub><mi>H</mi><msubsup><mi>P</mi><mi>k</mi><mi>f</mi></msubsup>
+            </math>
+          </div>
+          <p>The gain <var>K<sub>k</sub></var> converts the residual between the observed and predicted box into a state correction. The code evaluates the equivalent Joseph form for <var>P<sub>k</sub><sup>a</sup></var>. With no matched observation, the forecast is carried forward and there is no analysis at that frame.</p>
+          <p>For a new track, the first box sets the initial center and size, velocity starts at zero, and the filter assigns covariance <var>P<sub>0</sub></var>.</p>
+        </section>
+
+        <section class="model-section">
+          <h3>What the plots show</h3>
+          <p>The linear–Gaussian model represents each forecast and analysis by a mean <var>z̄</var> and covariance <var>P</var>. Each shaded time-series band is the current marginal interval <var>z̄<sub>i</sub> ± 1.96√P<sub>ii</sub></var>. The center ellipse uses the joint covariance of <var>(c<sub>x</sub>, c<sub>y</sub>)</var> and encloses 95% of the model’s Gaussian probability at that frame.</p>
+          <p>The constant-velocity model, IoU-based box matching, and simulated detector errors are choices for this demo. The uncertainty regions describe the assumed model. The footage supplies no ground-truth box centers for testing their coverage.</p>
+        </section>
+
+        <section class="model-section">
+          <h3>Matrices used by this export</h3>
+          <div id="model-matrices" class="matrix-grid"><p>Loading matrix values…</p></div>
+        </section>
+
+        <section class="model-section">
+          <h3>Simulation settings</h3>
+          <p id="model-tracking"></p>
+          <dl id="model-scenarios" class="model-scenarios"></dl>
+        </section>
+      </article>
+    </main>
+  </div>
   <dialog id="estimate-dialog" aria-labelledby="track-title"></dialog>
 </body>
 </html>

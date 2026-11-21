@@ -1,7 +1,9 @@
-"""Presentation header for an already annotated video frame."""
+"""Bounding-box drawing and the presentation header."""
 
 from PIL import Image, ImageDraw, ImageFont
 
+
+COLORS = {"forecast": "#00D5FF", "detector": "#FFD54F", "update": "#77F477"}
 
 STATUS_ONLINE = "#77F477"
 STATUS_OFFLINE = "#FF6269"
@@ -80,3 +82,60 @@ class PresentationOverlay:
             draw.rectangle(rect, fill=fill)
             if frame == index:
                 draw.rectangle((x0, self.bar_y - 3, x1, bottom + 3), outline="#FFFFFF")
+
+
+def draw_frame(frame, tracks, index, withheld, *, show_header=True):
+    image = Image.fromarray(frame)
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default(size=max(12, min(24, image.width // 65)))
+
+    def label(x, y, text, color="white"):
+        draw.text((x, y), text, font=font, fill=color, stroke_width=2, stroke_fill="black")
+
+    if show_header:
+        for x, text, kind in (
+            (8, "Forecast", "forecast"),
+            (image.width // 3, "Detector", "detector"),
+            (image.width * 2 // 3, "Kalman update", "update"),
+        ):
+            label(x, 5, text, COLORS[kind])
+        title = f"Frame {index}"
+        if withheld:
+            title += " | Detection withheld"
+        label(8, font.size + 10, title)
+
+    def draw_box(box, color, style):
+        if box is None:
+            return
+        left, top, right, bottom = (round(value) for value in box)
+        if right <= 0 or bottom <= 0 or left >= image.width or top >= image.height:
+            return
+        left, right = max(0, left), min(image.width - 1, right)
+        top, bottom = max(0, top), min(image.height - 1, bottom)
+        if style == "solid":
+            draw.rectangle((left, top, right, bottom), outline=color, width=2)
+            return
+        for low, high, fixed, horizontal in (
+            (left, right, top, True), (left, right, bottom, True),
+            (top, bottom, left, False), (top, bottom, right, False),
+        ):
+            for start in range(low, high, 14):
+                if style == "corners" and min(start - low, high - start) > 14:
+                    continue
+                end = min(start + 8, high)
+                line = (start, fixed, end, fixed) if horizontal else (fixed, start, fixed, end)
+                draw.line(line, fill=color, width=2)
+
+    for track in tracks:
+        draw_box(track.corrected, COLORS["update"], "solid")
+        draw_box(track.forecast, COLORS["forecast"], "dashed")
+        draw_box(track.detection, COLORS["detector"], "corners")
+        if track.corrected is not None:
+            box, kind = track.corrected, "update"
+        elif track.forecast is not None:
+            box, kind = track.forecast, "forecast"
+        else:
+            box, kind = track.detection, "detector"
+        label(max(0, round(box[0])), max(2 * font.size + 16, round(box[1]) - font.size - 4),
+              f"ID {track.id}", COLORS[kind])
+    return image

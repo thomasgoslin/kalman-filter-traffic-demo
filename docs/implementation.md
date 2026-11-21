@@ -2,13 +2,13 @@
 
 **For the VU Data Assimilation seminar on Reich and Cotter, §6.1.** Build a short video that shows how a Kalman filter combines a motion forecast with bounding boxes from an object detector. The presenter should be able to pause on a frame, identify the detector box, forecast box, and corrected box, and explain why the correction lands where it does.
 
-**Status** — **01.1 verified. 01.2 implemented and checked with synthetic video.** The phase acceptance gate remains open until the user supplies the clip and the real detector and seminar MP4 are verified on it. Resume at **01.2**.
+The tracker and renderer are implemented in [the Python package](../traffic_lab/). See the [interactive lab guide](interactive.md) for the completed browser workflow.
 
 ## Scope and deliverables
 
 This is a compact offline demo with one end-to-end milestone. Use a single cyclist for the clearest presentation, while supporting multiple objects in the input clip. The supplied clip determines which object categories to detect.
 
-- Keep the Python code in `kalman_filter_demo.py` at the demo root. Give it a command-line input video and output MP4 path.
+- The video renderer takes an input video and an output MP4 path. Both the renderer and the browser export use the same tracker.
 - Use a pretrained detector to produce bounding boxes. A small Ultralytics YOLO model in **prediction mode** is a suitable default. Use its class IDs, confidence scores, and boxes in original-frame pixel coordinates. Save detections once so overlay edits and filter tuning can reuse the same measurements. [Ultralytics detection API](https://docs.ultralytics.com/tasks/detect/)
 - Present this as a teaching implementation inspired by NVIDIA's NvSORT. NvSORT also combines a constant-velocity Kalman model with detection-to-track matching. [NVIDIA's tracker documentation](https://docs.nvidia.com/deepstream/9.2/text/DS_plugin_gst-nvtracker#nvsort-tracker)
 
@@ -56,7 +56,7 @@ Use Python 3.11 or later with NumPy, SciPy, and Pillow 10.1 or later. A fresh de
 
 ```powershell
 python -m pip install numpy scipy "Pillow>=10.1" ultralytics
-python kalman_filter_demo.py cyclist.mp4 outputs/cyclist-demo.mp4
+python -m traffic_lab.render cyclist.mp4 outputs/cyclist-demo.mp4
 ```
 
 The first run writes `outputs/cyclist-demo.detections.json` alongside the MP4. To render a second cut without repeating inference, pass `--cache outputs/cyclist-demo.detections.json` with the same detector settings and source video. Use `--drop-frames 90:93` to withhold detections on zero-based frames 90, 91, and 92. The cache keeps the original detections for those frames. Use `--help` for the detector and track settings.
