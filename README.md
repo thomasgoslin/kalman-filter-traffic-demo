@@ -56,18 +56,15 @@ port 8000. Rebuild the classroom output after changing the shared viewer or simu
 
 ### Update the live site from main
 
-The `kalman-filter-traffic-demo` Worker uses production branch `main`. Its Workers Builds
-settings use the repository root and these commands:
+The [Deploy classroom workflow](https://github.com/thomasgoslin/kalman-filter-traffic-demo/actions/workflows/deploy-classroom.yml)
+builds and deploys pushes to `main`. It uses a Cloudflare token scoped to the classroom Worker.
+Check the run in GitHub Actions after pushing, or use **Run workflow** from the same page to deploy
+`main` again.
 
-| Setting | Value |
-| --- | --- |
-| Build command | `npm ci && python -m pip install numpy scipy && npm run build:classroom` |
-| Deploy command | `npm run deploy:classroom` |
-| Build variable | `SKIP_DEPENDENCY_INSTALL=1` |
-
-Once the GitHub connection is active, push to `main` and check the Worker's build history
-for the result. You can deploy the same site manually with `npm ci`, `npx cf auth login`,
-`npm run build:classroom`, and `npm run deploy:classroom`.
+The workflow uses the repository secret `CLOUDFLARE_API_TOKEN` and the repository variable
+`CLOUDFLARE_ACCOUNT_ID` under **Settings → Secrets and variables → Actions**.
+To deploy manually, use `npm ci`, `npx cf auth login`, `npm run build:classroom`, and
+`npm run deploy:classroom`.
 
 Only `outputs/classroom` is deployed. Personal inputs, uploads, and generated outputs stay
 out of Git. The committed MP4 and raw detection cache are the classroom's two fixed inputs.
