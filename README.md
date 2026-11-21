@@ -40,7 +40,11 @@ The classroom site includes the four presets, bundles the existing detections, a
 Python Kalman simulation in a browser worker. Detector settings are fixed. Custom experiments are
 stored in the browser on that device. The first run downloads the browser Python runtime.
 
-After building the interactive export in Quick start, build and preview the classroom version:
+The repository includes one fixed clip and its raw YOLO cache under `classroom_assets/`.
+The build regenerates all four scenarios from that one cache. It needs Python 3.11+, NumPy,
+and SciPy. The bundled frame timestamps allow classroom builds without FFmpeg or YOLO.
+
+Build and preview the classroom version:
 
 ```powershell
 python -m traffic_lab.classroom build
@@ -52,29 +56,21 @@ port 8000. Rebuild the classroom output after changing the shared viewer or simu
 
 ### Update the live site from main
 
-Deployment is manual. Run these commands from the repository root on the machine that has the
-classroom clip and its detection cache. Set up the
-[Cloudflare CLI](https://developers.cloudflare.com/cf/get-started/) once:
+The `kalman-filter-traffic-demo` Worker uses production branch `main`. Its Workers Builds
+settings use the repository root and these commands:
 
-```powershell
-npm install --no-save --package-lock=false cf@1.0.0-rc.2
-npx cf auth login
-```
+| Setting | Value |
+| --- | --- |
+| Build command | `npm ci && python -m pip install numpy scipy && npm run build:classroom` |
+| Deploy command | `npm run deploy:classroom` |
+| Build variable | `SKIP_DEPENDENCY_INSTALL=1` |
 
-To publish the latest `main` to the same URL:
+Once the GitHub connection is active, push to `main` and check the Worker's build history
+for the result. You can deploy the same site manually with `npm ci`, `npx cf auth login`,
+`npm run build:classroom`, and `npm run deploy:classroom`.
 
-```powershell
-git switch main
-git pull --ff-only
-python -m traffic_lab.export
-python -m traffic_lab.classroom build
-$revision = git rev-parse --short HEAD
-npx cf deploy ./outputs/classroom --message "Git main $revision"
-```
-
-Cloudflare publishes only `outputs/classroom`. The fixed clip and detections stay outside Git.
-Check [the live Settings page](https://kalman-filter-traffic-demo.tmgoslin.workers.dev/settings)
-after deployment.
+Only `outputs/classroom` is deployed. Personal inputs, uploads, and generated outputs stay
+out of Git. The committed MP4 and raw detection cache are the classroom's two fixed inputs.
 
 For a quick classroom exercise, start from **Short outages + noise** and keep the seed fixed.
 Run two experiments with different values of the observation covariance `R`. Compare how strongly

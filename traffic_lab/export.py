@@ -79,33 +79,39 @@ def export_run(folder, name, flags, frames, fps, *, setup=None):
     }
 
 
-def main():
-    video, cache = ROOT / VIDEO, ROOT / CACHE
-    source_hash = digest(VIDEO)
+def build_interactive(folder, video, cache, *, video_metadata=None):
+    source_hash = digest(video)
     frames, _ = read_cache(cache, source_hash)
-    width, height, fps, _ = read_video_info(video)
-    timestamps = source_timestamps(video)
-    if len(timestamps) != len(frames):
-        raise ValueError("Source frame count differs from the detection cache.")
+    if video_metadata is None:
+        width, height, fps, _ = read_video_info(video)
+        timestamps = source_timestamps(video)
+    else:
+        width, height, fps, timestamps = (video_metadata[key] for key in ("width", "height", "fps", "timestamps"))
+    if (len(timestamps) != len(frames) or not timestamps or timestamps[0] != 0
+            or any(a >= b for a, b in zip(timestamps, timestamps[1:]))):
+        raise ValueError("Source timestamps do not match the detection cache.")
+    shutil.copytree(ROOT / "interactive_web", folder)
+    shutil.copyfile(video, folder / "source.mp4")
+    runs = []
+    for name, (label, flags) in RUNS.items():
+        print(f"Exporting {label}...", flush=True)
+        runs.append(dict(export_run(folder / name, name, flags, frames, fps), label=label))
+    write_json(folder / "manifest.json", {
+        "version": 1, "video": "source.mp4", "width": width, "height": height,
+        "fps": str(Fraction(fps)), "timestamps": timestamps, "frame_count": len(frames),
+        "source_sha256": source_hash, "cache_sha256": digest(cache),
+        "renderer_sha256": digest(RENDERER), "pipeline_sha256": pipeline_hashes(), "runs": runs,
+        "online_miss_limit": ONLINE_MISS_LIMIT,
+        "model": {name: matrix.tolist() for name, matrix in
+                  {"F": F, "H": H, "Q": Q, "R": R, "P0": P0}.items()},
+    })
+
+
+def main():
     with TemporaryDirectory(prefix=".interactive-", dir=ROOT / OUTPUTS) as temporary:
         workspace = Path(temporary)
         stage = workspace / "new"
-        interactive = stage / "interactive"
-        shutil.copytree(ROOT / "interactive_web", interactive)
-        shutil.copyfile(video, interactive / "source.mp4")
-        runs = []
-        for name, (label, flags) in RUNS.items():
-            print(f"Exporting {label}...", flush=True)
-            runs.append(dict(export_run(interactive / name, name, flags, frames, fps), label=label))
-        write_json(interactive / "manifest.json", {
-            "version": 1, "video": "source.mp4", "width": width, "height": height,
-            "fps": str(Fraction(fps)), "timestamps": timestamps, "frame_count": len(frames),
-            "source_sha256": source_hash, "cache_sha256": digest(CACHE),
-            "renderer_sha256": digest(RENDERER), "pipeline_sha256": pipeline_hashes(), "runs": runs,
-            "online_miss_limit": ONLINE_MISS_LIMIT,
-            "model": {name: matrix.tolist() for name, matrix in
-                      {"F": F, "H": H, "Q": Q, "R": R, "P0": P0}.items()},
-        })
+        build_interactive(stage / "interactive", ROOT / VIDEO, ROOT / CACHE)
         replace_outputs(stage, workspace / "previous")
     print("Interactive demo ready in outputs/interactive.", flush=True)
 

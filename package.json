@@ -1,0 +1,12 @@
+{
+  "name": "kalman-filter-traffic-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:classroom": "python -m traffic_lab.classroom build",
+    "deploy:classroom": "cf deploy ./outputs/classroom --no-provision"
+  },
+  "devDependencies": {
+    "cf": "1.0.0-rc.2"
+  }
+}

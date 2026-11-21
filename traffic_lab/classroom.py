@@ -8,27 +8,29 @@ from tempfile import TemporaryDirectory
 from urllib.parse import urlsplit
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from .experiments import Experiments
-from .export import write_json
-from .workspace import CACHE, OUTPUTS, ROOT, digest, replace_outputs
+from .experiments import Experiments, read_json
+from .export import build_interactive, write_json
+from .workspace import OUTPUTS, ROOT, replace_outputs
 
 
 CLASSROOM = ROOT / OUTPUTS / "classroom"
+FIXTURE = ROOT / "classroom_assets"
 SIMULATOR_MODULES = ("__init__", "experiments", "export", "media", "scenarios", "tracker", "workspace")
 ASSET_LIMIT = 25 * 1024 * 1024
 
 
 def build():
-    engine = Experiments()
-    export = ROOT / OUTPUTS / "interactive"
-    if digest(export / "source.mp4") != engine.source_hash:
-        raise ValueError("The preview video differs from the detection cache. Rebuild the interactive export.")
+    video = FIXTURE / "source.mp4"
+    cache = FIXTURE / "detections.json"
+    metadata = read_json(cache)["video"]
+    (ROOT / OUTPUTS).mkdir(exist_ok=True)
     with TemporaryDirectory(prefix=".classroom-", dir=ROOT / OUTPUTS) as temporary:
         work = Path(temporary)
         stage = work / "new"
         site = stage / "classroom"
-        shutil.copytree(export, site, ignore=shutil.ignore_patterns("*.html", "*.js", "*.css"))
-        shutil.copytree(ROOT / "interactive_web", site, dirs_exist_ok=True)
+        build_interactive(site, video, cache, video_metadata=metadata)
+        shutil.copyfile(cache, site / "detections.json")
+        engine = Experiments(classroom=site)
         for asset in (ROOT / "classroom_web").glob("*.js"):
             shutil.copyfile(asset, site / asset.name)
         page = site / "index.html"
@@ -42,7 +44,6 @@ def build():
             "videos": [{"id": "default", "label": "Built-in traffic clip"}],
             "source": engine.source_hash,
         })
-        shutil.copyfile(ROOT / CACHE, site / "detections.json")
         with ZipFile(site / "simulator.zip", "w", ZIP_DEFLATED) as bundle:
             for module in SIMULATOR_MODULES:
                 path = ROOT / "traffic_lab" / (module + ".py")
