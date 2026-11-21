@@ -713,6 +713,9 @@ async function loadSource(id, saved = []) {
 
 async function init() {
   await loadSource("default");
+  if (classroomApi) {
+    import("./usage.js").then(({measurePlayback}) => measurePlayback(video)).catch(() => {});
+  }
   initializeSettings({
     onVideo: loadSource,
     onRun: addRun,

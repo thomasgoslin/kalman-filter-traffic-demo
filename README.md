@@ -80,6 +80,18 @@ For a quick classroom exercise, start from **Short outages + noise** and keep th
 Run two experiments with different values of the observation covariance `R`. Compare how strongly
 the green analysis follows the yellow measurements for one clearly visible car.
 
+### Demo usage metrics
+
+The hosted site counts video starts, active playback time, and successfully saved experiments.
+Watch time counts while the video is playing in a visible tab. Site usage records contain only
+an event name, a timestamp, and a count or duration. Experiment content stays in the visitor’s browser.
+
+To view the last seven days, sign in with `npx cf auth login` and run this from the repository:
+
+```powershell
+npx cf analytics-engine sql query --body "SELECT sumIf(double1 * _sample_interval, blob1 = 'video_start') AS video_starts, round(sumIf(double1 * _sample_interval, blob1 = 'watch_time') / 60000, 2) AS watch_minutes, sumIf(double1 * _sample_interval, blob1 = 'experiment_complete') AS completed_experiments FROM kalman_demo_usage WHERE timestamp >= NOW() - INTERVAL '7' DAY FORMAT JSON"
+```
+
 ## Explore the lab
 
 - **Simulation.** Play or scrub the video, enter an exact frame, and click a track. Compare the cyan forecast, yellow observation, and green analysis. Open Position, Velocity, or Trajectory and choose **Expand** for a larger graph.

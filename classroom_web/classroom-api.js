@@ -1,3 +1,5 @@
+import {reportUsage} from "./usage.js";
+
 const jobs = new Map();
 let setup, database, worker, active;
 
@@ -50,6 +52,7 @@ function startWorker() {
         await access("readwrite", store => store.add({...result, name:normalizedName(result.run.label)}));
         jobs.set(job, {status:"complete", message:"Experiment complete.", run:result.run});
         active = null;
+        reportUsage("experiment_complete");
       } catch (error) {
         fail(job, error.message);
       }

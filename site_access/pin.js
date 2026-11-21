@@ -1,3 +1,5 @@
+import {recordUsage} from "./usage.js";
+
 const loginPath = "/unlock";
 const cookieName = "__Host-site-session";
 const sessionSeconds = 12 * 60 * 60;
@@ -26,6 +28,7 @@ function login(message = "", status = 200) {
     button { margin-top: .35rem; border: 0; background: #1b322c; color: #fff; cursor: pointer; }
     :focus-visible { outline: 2px solid #00798b; outline-offset: 2px; }
     p { margin: 0; color: #8b302c; }
+    .usage-note { margin-top: 1rem; color: #4f6258; font-size: .86rem; }
   </style>
 </head>
 <body>
@@ -37,6 +40,7 @@ function login(message = "", status = 200) {
       ${message ? `<p role="alert">${message}</p>` : ""}
       <button type="submit">Enter site</button>
     </form>
+    <p class="usage-note">This site counts video starts, active playback time, and completed experiments in aggregate.</p>
   </main>
 </body>
 </html>`, {
@@ -102,6 +106,10 @@ export default {
     const key = await crypto.subtle.importKey("raw", encoder.encode(env.SESSION_SIGNING_KEY),
       {name:"HMAC", hash:"SHA-256"}, false, ["sign", "verify"]);
     if (url.pathname === loginPath && request.method === "POST") return enter(request, url, env, key);
+    if (url.pathname === "/api/usage" && request.method === "POST") {
+      if (!await validSession(request, key, env.SITE_PIN)) return response("Site PIN required.", 401);
+      return recordUsage(request, url, env.USAGE_METRICS);
+    }
     if (!["GET", "HEAD"].includes(request.method)) return response("Method not allowed.", 405);
     if (!await validSession(request, key, env.SITE_PIN)) {
       return pages.has(url.pathname.replace(/\/$/, "") || "/") ? login() : response("Site PIN required.", 401);

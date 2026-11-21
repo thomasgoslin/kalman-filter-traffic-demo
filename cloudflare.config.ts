@@ -10,6 +10,7 @@ export default defineConfig({
     assets: {notFoundHandling: "single-page-application", runWorkerFirst: true},
     env: {
       ASSETS: bindings.assets(),
+      USAGE_METRICS: bindings.analyticsEngineDataset({name: "kalman_demo_usage"}),
       SITE_PIN: bindings.secret(),
       SESSION_SIGNING_KEY: bindings.secret(),
       PIN_RATE_LIMITER: bindings.rateLimit({namespace: "83021642", simple: {limit: 30, period: 60}}),
