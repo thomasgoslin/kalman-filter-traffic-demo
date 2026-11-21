@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kalman Traffic Lab</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="heading"><h1>Kalman Traffic Lab</h1></div>
+    <label class="scenario"><span>Simulation</span><select id="run" disabled></select></label>
+  </header>
+  <p id="error" role="alert" hidden></p>
+  <main>
+    <section class="player" aria-label="Traffic video">
+      <div class="video-bar"><span id="detector" class="badge">Loading</span><span id="frame-label">Source frame —</span></div>
+      <div class="stage" tabindex="0" aria-label="Traffic video. Arrow keys step through frames.">
+        <video id="video" playsinline muted preload="auto"></video>
+        <canvas id="overlay" aria-hidden="true"></canvas>
+        <div id="hover" class="tooltip" hidden></div>
+      </div>
+      <div class="controls">
+        <button id="play" type="button" aria-keyshortcuts="Space" disabled>Play</button>
+        <label class="speed">Speed<select id="speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option></select></label>
+        <label class="go">Go to frame<input id="frame-number" type="number" min="0" disabled></label>
+      </div>
+      <div class="scrubber">
+        <div id="outages" class="outages" aria-hidden="true"></div>
+        <input id="timeline" type="range" min="0" max="0" value="0" aria-label="Source frame" disabled>
+      </div>
+      <div class="layers" aria-label="Overlay layers">
+        <button id="toggle-overlays" type="button">Hide all</button>
+        <label class="forecast"><input type="checkbox" id="forecast" checked><span class="shape" aria-hidden="true"></span> Forecast</label>
+        <label class="detector"><input type="checkbox" id="measurement" checked><span class="shape" aria-hidden="true"></span> Measurement</label>
+        <label class="update"><input type="checkbox" id="update" checked><span class="shape" aria-hidden="true"></span> Update</label>
+        <label><input type="checkbox" id="ellipse" checked> 95% center ellipse</label>
+        <label><input type="checkbox" id="ids" checked> IDs</label>
+      </div>
+    </section>
+    <aside aria-label="Selected vehicle analytics">
+      <div class="inspector">
+        <div class="inspector-top">
+          <div><p class="panel-label">State estimate</p><h2 id="track-title">Track inspector</h2></div>
+          <button id="clear" type="button" disabled>Clear</button>
+        </div>
+        <label class="track-label"><span>Track ID</span><select id="track" disabled><option value="">Choose a track</option></select></label>
+        <p id="status">Pause and click a car, or choose a track by ID.</p>
+        <dl id="metrics" hidden></dl>
+      </div>
+      <div id="analytics" hidden>
+        <div class="tabs" aria-label="Track graphs">
+          <button type="button" data-tab="position" aria-pressed="true">Position</button>
+          <button type="button" data-tab="velocity" aria-pressed="false">Velocity</button>
+          <button type="button" data-tab="trajectory" aria-pressed="false">Trajectory</button>
+        </div>
+        <canvas id="chart-a" class="chart" role="img"></canvas>
+        <canvas id="chart-b" class="chart" role="img"></canvas>
+        <p id="chart-note" class="note"></p>
+      </div>
+    </aside>
+  </main>
+</body>
+</html>

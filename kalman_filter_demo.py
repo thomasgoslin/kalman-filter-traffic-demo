@@ -28,7 +28,7 @@ P0 = np.diag([25, 25, 36, 36, 100, 100])
 # Simulated detector availability. The filter and the saved boxes are unaffected.
 OUTAGE_START_RATE = 1.5  # Starts per second while the detector is online.
 OUTAGE_RECOVERY_PROBABILITY = 0.35  # Per missing frame, before the duration cap.
-OUTAGE_MAX_FRAMES = 6
+OUTAGE_MAX_FRAMES = 10
 
 Box = tuple[float, float, float, float]
 
@@ -79,12 +79,18 @@ def intersection_over_union(a: Box, b: Box) -> float:
     return intersection / (area_a + area_b - intersection)
 
 
-def correct(mean, covariance, measurement, observation_matrix, measurement_noise):
+def correct(mean, covariance, measurement, observation_matrix, measurement_noise, *, diagnostics=None):
     """Condition the predicted state on one measurement."""
     cross_covariance = covariance @ observation_matrix.T
     innovation_covariance = observation_matrix @ cross_covariance + measurement_noise
     gain = np.linalg.solve(innovation_covariance, cross_covariance.T).T
     innovation = measurement - observation_matrix @ mean
+    if diagnostics is not None:
+        diagnostics.update(
+            z=measurement.tolist(), innovation=innovation.tolist(),
+            S=innovation_covariance.tolist(), K=gain.tolist(),
+            nis=float(innovation @ np.linalg.solve(innovation_covariance, innovation)),
+        )
     residual_map = np.eye(len(mean)) - gain @ observation_matrix
     # Joseph form keeps both sources of posterior uncertainty explicit.
     return (
@@ -99,6 +105,7 @@ class Tracker:
         self.max_misses = max_misses
         self.tracks: list[Track] = []
         self.next_id = 1
+        self._awaiting_measurements = False
 
     def _assign(self, forecasts: list[Box], detections: list[Detection]) -> dict[int, int]:
         if not forecasts or not detections:
@@ -115,7 +122,13 @@ class Tracker:
         rows, columns = linear_sum_assignment(costs)
         return {int(i): int(j) for i, j in zip(rows, columns) if costs[i, j] < penalty}
 
-    def step(self, detections: list[Detection]) -> list[FrameTrack]:
+    def step(self, detections: list[Detection], *, withheld=False, telemetry=None) -> list[FrameTrack]:
+        """Advance one source frame, optionally appending numerical track records."""
+        if withheld:
+            self._awaiting_measurements = True
+        recovering = self._awaiting_measurements and not withheld and bool(detections)
+        if recovering:
+            self._awaiting_measurements = False
         forecasts = []
         for track in self.tracks:
             track.mean = F @ track.mean
@@ -127,21 +140,39 @@ class Tracker:
         visible = []
         survivors = []
         for i, track in enumerate(self.tracks):
+            record = None
+            expired = False
+            if telemetry is not None:
+                record = {"x_pred": track.mean.tolist(), "P_pred": track.covariance.tolist()}
             if i in matches:
                 box = detections[matches[i]].box
                 track.mean, track.covariance = correct(
-                    track.mean, track.covariance, to_measurement(box), H, R
+                    track.mean, track.covariance, to_measurement(box), H, R, diagnostics=record,
                 )
                 track.misses = 0
+                if record is not None:
+                    detection = detections[matches[i]]
+                    record.update(
+                        status="updated", detection_index=matches[i],
+                        detection_confidence=detection.confidence,
+                        assignment_iou=intersection_over_union(forecasts[i], box),
+                    )
                 visible.append(
                     FrameTrack(track.id, track.class_id, forecasts[i], box, to_box(H @ track.mean))
                 )
             else:
                 track.misses += 1
-                if track.misses > self.max_misses:
-                    continue
-                visible.append(FrameTrack(track.id, track.class_id, forecasts[i]))
-            survivors.append(track)
+                expired = recovering or track.misses > self.max_misses
+                if record is not None:
+                    record["status"] = "expired" if expired else "predicted"
+                    if expired:
+                        record["expiry_reason"] = "unmatched_on_recovery" if recovering else "miss_limit"
+                if not expired:
+                    visible.append(FrameTrack(track.id, track.class_id, forecasts[i]))
+            if record is not None:
+                telemetry.append(self._track_record(track, record))
+            if not expired:
+                survivors.append(track)
 
         for j, detection in enumerate(detections):
             if j not in used_detections:
@@ -150,8 +181,26 @@ class Tracker:
                 self.next_id += 1
                 survivors.append(track)
                 visible.append(FrameTrack(track.id, track.class_id, detection=detection.box))
+                if telemetry is not None:
+                    telemetry.append(self._track_record(track, {
+                        "status": "initialized", "detection_index": j,
+                        "detection_confidence": detection.confidence,
+                        "z": to_measurement(detection.box).tolist(),
+                    }))
         self.tracks = survivors
         return visible
+
+
+    @staticmethod
+    def _track_record(track, details):
+        return {
+            "id": track.id, "class_id": track.class_id, "misses": track.misses,
+            "x_current": track.mean.tolist(), "P_current": track.covariance.tolist(),
+            "x_pred": None, "P_pred": None, "z": None, "innovation": None,
+            "S": None, "K": None, "nis": None, "detection_index": None,
+            "detection_confidence": None, "assignment_iou": None,
+            **details,
+        }
 
 
 def read_video_info(path):
@@ -270,6 +319,14 @@ def jitter_detections(detections, rng, probability, std_fraction):
             )
         jittered.append(detection)
     return jittered
+
+
+def effective_detections(detections, withheld, sensor_rng, probability, std_fraction):
+    if withheld:
+        return []
+    if sensor_rng is not None:
+        return jitter_detections(detections, sensor_rng, probability, std_fraction)
+    return detections
 
 
 def draw_frame(frame, tracks, index, withheld, *, show_header=True):
@@ -404,6 +461,8 @@ def render(args, staged_output, settings, cached_frames, staged_frames=None):
     records = []
     count = 0
     rendered = 0
+    expected_frames = len(args.clip_frames) if args.clip_frames is not None else total
+    progress_interval = max(1, math.ceil(expected_frames / 10)) if expected_frames else 60
     previous_withheld = False
     frame_bytes = width * height * 3
     with subprocess.Popen(decoder, stdout=subprocess.PIPE) as source:
@@ -427,13 +486,11 @@ def render(args, staged_output, settings, cached_frames, staged_frames=None):
                         withheld = any(count in dropout for dropout in dropouts)
                         recovered = previous_withheld and not withheld
                         previous_withheld = withheld
-                        if withheld:
-                            detections = []
-                        elif sensor_rng is not None:
-                            detections = jitter_detections(detections, sensor_rng,
-                                                          args.sensor_noise_probability,
-                                                          args.sensor_noise_std)
-                        tracks = tracker.step(detections)
+                        detections = effective_detections(
+                            detections, withheld, sensor_rng,
+                            args.sensor_noise_probability, args.sensor_noise_std,
+                        )
+                        tracks = tracker.step(detections, withheld=withheld)
                         if args.clip_frames is None or count in args.clip_frames:
                             annotated = draw_frame(frame, tracks, count, withheld,
                                                    show_header=overlay is None)
@@ -446,6 +503,10 @@ def render(args, staged_output, settings, cached_frames, staged_frames=None):
                             for _ in range(repeats):
                                 output.stdin.write(pixels)
                             rendered += 1
+                            if args.progress and (rendered % progress_interval == 0
+                                                  or rendered == expected_frames):
+                                progress = f"{rendered}/{expected_frames}" if expected_frames else str(rendered)
+                                print(f"[{args.output.stem}] {progress} frames", flush=True)
                         count += 1
                     output.stdin.close()
                     if output.wait() != 0 or source.wait() != 0:
@@ -474,7 +535,7 @@ def frame_range(value):
     raise argparse.ArgumentTypeError("Expected START:END with 0 <= START < END (end excluded).")
 
 
-def main():
+def make_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input", type=Path, help="Source video")
     parser.add_argument("output", type=Path, help="Output MP4")
@@ -501,6 +562,12 @@ def main():
     parser.add_argument("--slowdown", type=int, default=1, help="Playback slowdown factor (default: 1)")
     parser.add_argument("--recovery-hold", type=float, default=0,
                         help="Seconds to hold the first frame after each gap")
+    parser.add_argument("--progress", action="store_true", help="Print periodic render progress")
+    return parser
+
+
+def main():
+    parser = make_parser()
     args = parser.parse_args()
     cache = args.cache or args.output.with_suffix(".detections.json")
     schedule_path = args.output.with_suffix(".schedule.json") if args.outage_seed is not None else None

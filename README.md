@@ -4,6 +4,8 @@ An offline teaching demo for a data assimilation seminar. A pretrained detector 
 
 The overlay shows **cyan dashed** forecasts, **yellow corners** for detector readings, and **green solid** Kalman updates. The displayed frame number starts at zero. The tracker uses class and box overlap to associate detections with existing tracks, so crowded scenes can cause ID switches.
 
+Use the [Interactive Kalman Traffic Lab](README-interactive.md) to play the same four scenarios, select a vehicle, and inspect its forecast, analysis, and uncertainty.
+
 ## Four simulation examples
 
 All four runs use the same traffic clip, saved detector readings, and tracker code. The detector outages and measurement jitter are simulated.
@@ -18,7 +20,7 @@ All four runs use the same traffic clip, saved detector readings, and tracker co
 
 ![Frame 294 with a red detector status and blue forecast boxes](docs/demo/short-outage.jpg)
 
-**Frame 294.** This is the last frame of a six-frame gap. The red status marks a withheld detector reading, and the blue boxes are forecasts from the last available estimate. Seed `2026` generates 32 short gaps in the full clip using geometric waits and capped geometric durations.
+**Frame 294.** This is the last frame of a six-frame gap. The red status marks a withheld detector reading, and the blue boxes are forecasts from the last available estimate. This screenshot uses an earlier six-frame cap for the seeded geometric outages.
 
 ### 3. Short outages with noisy detections
 
@@ -61,22 +63,22 @@ python kalman_filter_demo.py videoplayback.mp4 outputs/intermittent-outage.mp4 -
 
 All ranges are zero-based and exclude their end frame. The filter processes the preceding frames to establish each track. The video plays each selected frame once at the source frame rate. PNGs keep their original source frame numbers.
 
-For the full traffic clip, omit `--clip-frames`. Use `--drop-frames 170:185 --drop-frames 195:225 --drop-frames 280:325 --drop-frames 550:610 --max-misses 60` to reproduce gaps of 15, 30, 45, and 60 frames. The longer miss allowance lets the forecasts remain visible through each gap. When detections return, unmatched cars may get new track IDs.
+For the full traffic clip, omit `--clip-frames`. Use `--drop-frames 170:185 --drop-frames 195:225 --drop-frames 280:325 --drop-frames 550:610 --max-misses 60` to reproduce gaps of 15, 30, 45, and 60 frames. The longer miss allowance lets the forecasts remain visible through each gap. When detections return, unmatched existing tracks are retired and unmatched detections start new tracks.
 
 ## Seeded detector dropouts
 
 ```powershell
-python kalman_filter_demo.py videoplayback.mp4 outputs/random-dropouts.mp4 --classes 2 --cache outputs/traffic-demo.detections.json --presentation --outage-seed 2026 --frames-dir outputs/random-dropouts-frames
+python kalman_filter_demo.py videoplayback.mp4 outputs/random-dropouts.mp4 --classes 2 --cache outputs/traffic-demo.detections.json --presentation --outage-seed 2026 --max-misses 10 --frames-dir outputs/random-dropouts-frames
 ```
 
-The simulation alternates online periods with short outages. The wait to start an outage while online is geometric in frames, with start probability `1 - exp(-1.5 / fps)` per frame. This is the frame-by-frame version of an exponential wait at 1.5 starts per online second. Outage lengths are geometric with a recovery probability of 0.35 per missing frame, capped at six frames.
+The simulation alternates online periods with short outages. The wait to start an outage while online is geometric in frames, with start probability `1 - exp(-1.5 / fps)` per frame. This is the frame-by-frame version of an exponential wait at 1.5 starts per online second. Outage lengths are geometric with a recovery probability of 0.35 per missing frame, capped at ten frames.
 
 The same integer seed, source frame count, frame rate, and settings produce the same schedule. A seeded run writes its exact zero-based, end-exclusive ranges to a `.schedule.json` file alongside the MP4. It saves detector boxes as recorded and withholds measurements only during tracking. Choose either `--outage-seed` or explicit `--drop-frames` ranges.
 
 ## Occasional noisy detections
 
 ```powershell
-python kalman_filter_demo.py videoplayback.mp4 outputs/noisy-dropouts.mp4 --classes 2 --cache outputs/traffic-demo.detections.json --presentation --outage-seed 2026 --sensor-noise-std 0.16 --sensor-noise-probability 0.18 --sensor-noise-seed 2027
+python kalman_filter_demo.py videoplayback.mp4 outputs/noisy-dropouts.mp4 --classes 2 --cache outputs/traffic-demo.detections.json --presentation --outage-seed 2026 --max-misses 10 --sensor-noise-std 0.16 --sensor-noise-probability 0.18 --sensor-noise-seed 2027
 ```
 
 For each available detection, a Bernoulli draw selects whether to perturb it. If selected, independent zero-mean Gaussian offsets shift its center horizontally and vertically. A scale of `0.16` means standard deviations of 16% of the box width and height on the respective axes. Box size, class, confidence, and the saved detections stay as recorded. During a dropout, no measurements reach the tracker.

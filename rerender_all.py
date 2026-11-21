@@ -1,0 +1,303 @@
+
+"""Rerender all four traffic demos using the saved detector readings."""
+
+import hashlib
+import json
+import shutil
+import subprocess
+import sys
+import threading
+import time
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+from kalman_filter_demo import OUTAGE_MAX_FRAMES
+
+
+ROOT = Path(__file__).resolve().parent
+VIDEO = Path("videoplayback.mp4")
+OUTPUTS = Path("outputs")
+CACHE = OUTPUTS / "traffic-demo.detections.json"
+RENDERER = Path("kalman_filter_demo.py")
+
+SHARED_FLAGS = ["--presentation", "--cache", str(CACHE)]
+SHORT_OUTAGES = [
+    "--outage-seed", "2026",
+    "--max-misses", str(max(8, OUTAGE_MAX_FRAMES)),
+]
+
+RUNS = {
+    "traffic-demo": [],
+    "traffic-demo-presentation-random-dropouts": SHORT_OUTAGES,
+    "traffic-demo-noisy-dropouts": [
+        *SHORT_OUTAGES,
+        "--sensor-noise-std", "0.16",
+        "--sensor-noise-probability", "0.18",
+        "--sensor-noise-seed", "2027",
+    ],
+    "traffic-demo-presentation-long-outages": [
+        "--max-misses", "60",
+        "--drop-frames", "170:185",
+        "--drop-frames", "195:225",
+        "--drop-frames", "280:325",
+        "--drop-frames", "550:610",
+    ],
+}
+
+PROGRESS_INTERVAL = 3.0  # Seconds between updates
+PRINT_LOCK = threading.Lock()
+
+
+def status(name, message):
+    """Print a complete, thread-safe status line."""
+    with PRINT_LOCK:
+        print(f"[{name}] {message}", flush=True)
+
+
+def source_frame_count():
+    """Get total source frames, counting them if metadata is unavailable."""
+    def probe(count_frames=False):
+        command = ["ffprobe", "-v", "error", "-select_streams", "v:0"]
+        if count_frames:
+            command.append("-count_frames")
+        command += [
+            "-show_entries", "stream=nb_frames,nb_read_frames",
+            "-of", "json", str(VIDEO),
+        ]
+        data = json.loads(
+            subprocess.check_output(command, cwd=ROOT)
+        )
+        return data["streams"][0]
+
+    stream = probe()
+
+    if stream.get("nb_frames") not in (None, "N/A", "0"):
+        return int(stream["nb_frames"])
+
+    stream = probe(count_frames=True)
+    return int(stream["nb_read_frames"])
+
+
+def count_rendered_frames(frames_dir):
+    """Count PNG frames already written by the renderer."""
+    if not frames_dir.exists():
+        return 0
+    return sum(1 for _ in frames_dir.glob("*.png"))
+
+
+def render_run(stage, logs, name, flags, total_frames):
+    print(f"[{name}] Starting", flush=True)
+    video = stage / f"{name}.mp4"
+    frames_dir = stage / f"{name}-frames"
+    log_path = logs / f"{name}.log"
+
+    command = [
+        sys.executable, str(RENDERER),
+        str(VIDEO), str(video),
+        *SHARED_FLAGS,
+        "--frames-dir", str(frames_dir),
+        *flags,
+    ]
+
+    started = time.monotonic()
+    status(name, "STARTED")
+
+    # Capture renderer output to avoid mixing logs from concurrent runs.
+    with log_path.open("w", encoding="utf-8") as log:
+        process = subprocess.Popen(
+            command,
+            cwd=ROOT,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+        )
+
+        next_report = started + PROGRESS_INTERVAL
+
+        try:
+            while process.poll() is None:
+                now = time.monotonic()
+
+                if now >= next_report:
+                    completed = count_rendered_frames(frames_dir)
+                    elapsed = now - started
+                    percentage = 100 * completed / total_frames
+
+                    status(
+                        name,
+                        f"RENDERING {completed}/{total_frames} frames "
+                        f"({percentage:.1f}%) | {elapsed:.1f}s"
+                    )
+
+                    next_report = now + PROGRESS_INTERVAL
+
+                time.sleep(0.5)
+
+            returncode = process.wait()
+
+        except BaseException:
+            process.terminate()
+            process.wait()
+            raise
+
+    elapsed = time.monotonic() - started
+    completed = count_rendered_frames(frames_dir)
+
+    if returncode != 0:
+        status(name, f"FAILED | exit code {returncode} | {elapsed:.1f}s")
+
+        with log_path.open(encoding="utf-8", errors="replace") as log:
+            tail = deque(log, maxlen=25)
+
+        with PRINT_LOCK:
+            print(f"\n--- Last log lines: {name} ---", file=sys.stderr)
+            print("".join(tail), file=sys.stderr)
+            print("--- End log ---\n", file=sys.stderr)
+
+        raise subprocess.CalledProcessError(returncode, command)
+
+    status(
+        name,
+        f"DONE | {completed}/{total_frames} frames | {elapsed:.1f}s"
+    )
+
+    probe = subprocess.check_output([
+        "ffprobe", "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries",
+        "stream=width,height,avg_frame_rate,nb_frames",
+        "-of", "json", str(video),
+    ], cwd=ROOT)
+
+    return {
+        "flags": flags,
+        "video": json.loads(probe)["streams"][0],
+    }
+
+
+def digest(path):
+    with (ROOT / path).open("rb") as file:
+        return hashlib.file_digest(file, "sha256").hexdigest()
+
+
+def replace_outputs(stage, backup):
+    backup.mkdir()
+    previous = []
+    installed = []
+
+    try:
+        for source in sorted(stage.iterdir()):
+            target = ROOT / OUTPUTS / source.name
+
+            if target.exists() or target.is_symlink():
+                target.rename(backup / source.name)
+                previous.append(target)
+
+            source.rename(target)
+            installed.append(target)
+
+    except (OSError, KeyboardInterrupt):
+        for target in reversed(installed):
+            target.rename(stage / target.name)
+
+        for target in reversed(previous):
+            (backup / target.name).rename(target)
+
+        raise
+
+
+def main():
+    for path in (VIDEO, CACHE):
+        if not (ROOT / path).is_file():
+            raise FileNotFoundError(f"Missing {ROOT / path}")
+
+    total_frames = source_frame_count()
+
+    status(
+        "ALL",
+        f"{len(RUNS)} renders queued | "
+        f"2 concurrent | {total_frames} source frames"
+    )
+
+    workspace = ROOT / OUTPUTS / ".render-all"
+    workspace.mkdir()
+
+    stage = workspace / "new"
+    backup = workspace / "previous"
+    logs = workspace / "logs"
+
+    stage.mkdir()
+    logs.mkdir()
+
+    overall_start = time.monotonic()
+
+    print(f"Rendering {len(RUNS)} demos from cached detections (2 at a time).", flush=True)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            jobs = {
+                name: pool.submit(
+                    render_run,
+                    stage,
+                    logs,
+                    name,
+                    flags,
+                    total_frames,
+                )
+                for name, flags in RUNS.items()
+            }
+
+            runs = {
+                name: job.result()
+                for name, job in jobs.items()
+            }
+
+        manifest = {
+            "source": VIDEO.name,
+            "source_sha256": digest(VIDEO),
+            "renderer_sha256": {
+                str(RENDERER): digest(RENDERER),
+                "presentation_overlay.py": digest(
+                    Path("presentation_overlay.py")
+                ),
+            },
+            "detections_cache": CACHE.name,
+            "detections_sha256": digest(CACHE),
+            "pngs": (
+                "Rendered alongside their corresponding annotated MP4, "
+                "numbered from zero."
+            ),
+            "shared_flags": SHARED_FLAGS,
+            "runs": runs,
+        }
+
+        (stage / "simulation-manifest.json").write_text(
+            json.dumps(manifest, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        status("ALL", "Installing completed outputs...")
+        print("Replacing previous outputs...", flush=True)
+        replace_outputs(stage, backup)
+
+    except (Exception, KeyboardInterrupt):
+        if backup.exists() and any(backup.iterdir()):
+            print(
+                f"Previous outputs are available for recovery in {backup}",
+                file=sys.stderr,
+            )
+        else:
+            shutil.rmtree(workspace)
+        raise
+
+    shutil.rmtree(workspace)
+
+    elapsed = time.monotonic() - overall_start
+    status(
+        "ALL",
+        f"Successfully refreshed all {len(RUNS)} demos "
+        f"in {elapsed:.1f}s | {ROOT / OUTPUTS}"
+    )
+
+
+if __name__ == "__main__":
+    main()
