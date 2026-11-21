@@ -35,7 +35,7 @@ The weights may download on the first YOLO pass. Source video and local weights 
 
 ## Classroom mode
 
-Open the [live classroom site](https://kalman-filter.tmgoslin.workers.dev/) and enter the shared class PIN to use the fixed clip without installing anything. The same repository also supports a laptop workflow with uploads.
+Open the [live classroom site](https://kalman-filter.tmgoslin.workers.dev/) and enter the shared site PIN to use the fixed clip without installing anything. The same repository also supports a laptop workflow with uploads.
 The classroom site includes the four presets, bundles the existing detections, and runs the same
 Python Kalman simulation in a browser worker. Detector settings are fixed. Custom experiments are
 stored in the browser on that device. The first run downloads the browser Python runtime.
@@ -67,10 +67,10 @@ To deploy manually, use `npm ci`, `npx cf auth login`, `npm run build:classroom`
 `npm run deploy:classroom`.
 
 The live site checks the shared PIN in a Cloudflare Worker before serving the page, video, or
-data. The Worker reads the eight-digit `CLASSROOM_PIN` and a separate 64-character hexadecimal
-`CLASSROOM_SESSION_KEY` from Cloudflare secrets. Set or rotate them using a private JSON file with
+data. The Worker reads the eight-digit `SITE_PIN` and a separate 64-character hexadecimal
+`SESSION_SIGNING_KEY` from Cloudflare secrets. Set or rotate them using a private JSON file with
 `npx cf deploy --no-provision --secrets-file <private-json-file>` after building the classroom site.
-Rotating the PIN invalidates earlier sessions. Student sessions last up to 12 hours. The PIN does
+Rotating the PIN invalidates earlier sessions. Sessions last up to 12 hours. The PIN does
 not restrict access to the copies of the clip and detections in this public repository.
 
 Only the Worker and `outputs/classroom` are deployed. Personal inputs, uploads, and generated outputs stay

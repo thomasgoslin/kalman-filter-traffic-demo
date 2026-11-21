@@ -1,5 +1,5 @@
-const loginPath = "/class-pin";
-const cookieName = "__Host-classroom";
+const loginPath = "/unlock";
+const cookieName = "__Host-site-session";
 const sessionSeconds = 12 * 60 * 60;
 const digits = /^\d{8}$/;
 const encoder = new TextEncoder();
@@ -12,7 +12,7 @@ function login(message = "", status = 200) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
-  <title>Class PIN | Kalman Traffic Test</title>
+  <title>Site PIN | Kalman Traffic Test</title>
   <style>
     :root { color-scheme: dark; font: 16px/1.45 Bahnschrift, "Trebuchet MS", sans-serif; }
     body { margin: 0; min-height: 100dvh; display: grid; place-items: center; color: #f6efdb;
@@ -32,7 +32,7 @@ function login(message = "", status = 200) {
   <main>
     <h1>Kalman Traffic Test</h1>
     <form method="post" action="${loginPath}">
-      <label for="pin">Class PIN</label>
+      <label for="pin">Site PIN</label>
       <input id="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" required>
       ${message ? `<p role="alert">${message}</p>` : ""}
       <button type="submit">Enter site</button>
@@ -76,13 +76,13 @@ async function enter(request, url, env, key) {
       || !request.headers.get("Content-Type")?.startsWith("application/x-www-form-urlencoded")) {
     return response("Invalid PIN request.", 400);
   }
-  const {success} = await env.PIN_ATTEMPTS.limit({key:request.headers.get("CF-Connecting-IP") ?? "unknown"});
+  const {success} = await env.PIN_RATE_LIMITER.limit({key:request.headers.get("CF-Connecting-IP") ?? "unknown"});
   if (!success) return login("Too many attempts. Try again in a minute.", 429);
   const pin = new URLSearchParams(await request.text()).get("pin") ?? "";
-  const expected = await sign(key, "pin:" + env.CLASSROOM_PIN);
+  const expected = await sign(key, "pin:" + env.SITE_PIN);
   if (digits.test(pin) && await crypto.subtle.verify("HMAC", key, expected, encoder.encode("pin:" + pin))) {
     const expires = Math.floor(Date.now() / 1000) + sessionSeconds;
-    const bytes = await sign(key, "session:" + env.CLASSROOM_PIN + ":" + expires);
+    const bytes = await sign(key, "session:" + env.SITE_PIN + ":" + expires);
     const signature = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
     return new Response(null, {status:303, headers: {
       Location: "/",
@@ -95,16 +95,16 @@ async function enter(request, url, env, key) {
 
 export default {
   async fetch(request, env) {
-    if (!digits.test(env.CLASSROOM_PIN ?? "") || !/^[a-f0-9]{64}$/.test(env.CLASSROOM_SESSION_KEY ?? "")) {
-      return response("Classroom access is not configured.", 503);
+    if (!digits.test(env.SITE_PIN ?? "") || !/^[a-f0-9]{64}$/.test(env.SESSION_SIGNING_KEY ?? "")) {
+      return response("Site access is not configured.", 503);
     }
     const url = new URL(request.url);
-    const key = await crypto.subtle.importKey("raw", encoder.encode(env.CLASSROOM_SESSION_KEY),
+    const key = await crypto.subtle.importKey("raw", encoder.encode(env.SESSION_SIGNING_KEY),
       {name:"HMAC", hash:"SHA-256"}, false, ["sign", "verify"]);
     if (url.pathname === loginPath && request.method === "POST") return enter(request, url, env, key);
     if (!["GET", "HEAD"].includes(request.method)) return response("Method not allowed.", 405);
-    if (!await validSession(request, key, env.CLASSROOM_PIN)) {
-      return pages.has(url.pathname.replace(/\/$/, "") || "/") ? login() : response("Class PIN required.", 401);
+    if (!await validSession(request, key, env.SITE_PIN)) {
+      return pages.has(url.pathname.replace(/\/$/, "") || "/") ? login() : response("Site PIN required.", 401);
     }
     if (url.pathname === loginPath) return Response.redirect(new URL("/", url), 303);
     const asset = await env.ASSETS.fetch(request);
