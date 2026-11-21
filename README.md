@@ -78,7 +78,7 @@ python kalman_filter_demo.py videoplayback.mp4 outputs/intermittent-outage.mp4 -
 
 All ranges are zero-based and exclude their end frame. The filter processes the preceding frames to establish each track. The video plays each selected frame once at the source frame rate. PNGs keep their original source frame numbers.
 
-For the full traffic clip, omit `--clip-frames`. Use `--drop-frames 170:185 --drop-frames 195:225 --drop-frames 280:325 --drop-frames 550:610 --max-misses 60` to reproduce gaps of 15, 30, 45, and 60 frames. The longer miss allowance lets the forecasts remain visible through each gap. When detections return, unmatched existing tracks are retired and unmatched detections start new tracks.
+For the full traffic clip, omit `--clip-frames`. Use `--drop-frames 170:185 --drop-frames 195:225 --drop-frames 280:325 --drop-frames 550:610 --max-misses 60` to reproduce gaps of 15, 30, 45, and 60 frames. The longer miss allowance applies during the outage. While the detector is online, an unmatched track can coast for up to eight frames. When detections return, unmatched existing tracks are retired and unmatched detections start new tracks.
 
 ## Seeded detector dropouts
 

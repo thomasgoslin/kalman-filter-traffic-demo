@@ -30,6 +30,8 @@ OUTAGE_START_RATE = 1.5  # Starts per second while the detector is online.
 OUTAGE_RECOVERY_PROBABILITY = 0.35  # Per missing frame, before the duration cap.
 OUTAGE_MAX_FRAMES = 10
 
+ONLINE_MISS_LIMIT = 8
+
 Box = tuple[float, float, float, float]
 
 
@@ -100,7 +102,7 @@ def correct(mean, covariance, measurement, observation_matrix, measurement_noise
 
 
 class Tracker:
-    def __init__(self, min_iou: float = 0.1, max_misses: int = 8):
+    def __init__(self, min_iou: float = 0.1, max_misses: int = ONLINE_MISS_LIMIT):
         self.min_iou = min_iou
         self.max_misses = max_misses
         self.tracks: list[Track] = []
@@ -135,6 +137,7 @@ class Tracker:
             track.covariance = F @ track.covariance @ F.T + Q
             forecasts.append(to_box(H @ track.mean))
 
+        miss_limit = self.max_misses if withheld else min(self.max_misses, ONLINE_MISS_LIMIT)
         matches = self._assign(forecasts, detections)
         used_detections = set(matches.values())
         visible = []
@@ -162,7 +165,7 @@ class Tracker:
                 )
             else:
                 track.misses += 1
-                expired = recovering or track.misses > self.max_misses
+                expired = recovering or track.misses > miss_limit
                 if record is not None:
                     record["status"] = "expired" if expired else "predicted"
                     if expired:
@@ -545,7 +548,8 @@ def make_parser():
     parser.add_argument("--classes", type=int, nargs="+", help="Optional detector class IDs")
     parser.add_argument("--confidence", type=float, help="Detection threshold (new run: 0.25)")
     parser.add_argument("--min-iou", type=float, default=0.10)
-    parser.add_argument("--max-misses", type=int, default=8)
+    parser.add_argument("--max-misses", type=int, default=ONLINE_MISS_LIMIT,
+                        help=f"Consecutive missed frames allowed, capped at {ONLINE_MISS_LIMIT} while online")
     outage_mode = parser.add_mutually_exclusive_group()
     outage_mode.add_argument("--drop-frames", type=frame_range, action="append", default=[],
                              help="Withhold detections on START:END, end excluded. Repeat for several gaps.")

@@ -15,7 +15,17 @@
   <p id="error" role="alert" hidden></p>
   <main>
     <section class="player" aria-label="Traffic video">
-      <div class="video-bar"><span id="detector" class="badge">Loading</span><span id="frame-label">Source frame —</span></div>
+      <div class="video-bar">
+        <span id="detector" class="badge">Loading</span>
+        <div class="frame-tools">
+          <label class="frame-readout">
+            <span>Frame</span>
+            <input id="frame-number" type="number" min="0" step="1" value="0" aria-label="Frame number" disabled>
+            <span class="frame-limit">/ <span id="last-frame">—</span></span>
+          </label>
+          <button id="restart" type="button" disabled>Restart</button>
+        </div>
+      </div>
       <div class="stage" tabindex="0" aria-label="Traffic video. Arrow keys step through frames.">
         <video id="video" playsinline muted preload="auto"></video>
         <canvas id="overlay" aria-hidden="true"></canvas>
@@ -23,8 +33,7 @@
       </div>
       <div class="controls">
         <button id="play" type="button" aria-keyshortcuts="Space" disabled>Play</button>
-        <label class="speed">Speed<select id="speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option></select></label>
-        <label class="go">Go to frame<input id="frame-number" type="number" min="0" disabled></label>
+        <label class="speed">Speed<select id="speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
       </div>
       <div class="scrubber">
         <div id="outages" class="outages" aria-hidden="true"></div>
@@ -46,8 +55,6 @@
           <button id="clear" type="button" disabled>Clear</button>
         </div>
         <label class="track-label"><span>Track ID</span><select id="track" disabled><option value="">Choose a track</option></select></label>
-        <p id="status">Pause and click a car, or choose a track by ID.</p>
-        <dl id="metrics" hidden></dl>
       </div>
       <div id="analytics" hidden>
         <div class="tabs" aria-label="Track graphs">
@@ -58,6 +65,15 @@
         <canvas id="chart-a" class="chart" role="img"></canvas>
         <canvas id="chart-b" class="chart" role="img"></canvas>
         <p id="chart-note" class="note"></p>
+      </div>
+      <div class="frame-details">
+        <p id="status">Click a car or choose a track by ID.</p>
+        <dl id="metrics" hidden>
+          <dt>Box size</dt><dd id="box-size"></dd>
+          <dt>Center σ (x / y)</dt><dd id="center-sigma"></dd>
+          <dt>Consecutive misses</dt><dd id="miss-count"></dd>
+          <dt>Detector score</dt><dd id="detector-score"></dd>
+        </dl>
       </div>
     </aside>
   </main>

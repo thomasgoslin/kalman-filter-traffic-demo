@@ -62,7 +62,7 @@ button:disabled, select:disabled, input:disabled { opacity: .54; }
   animation: arrive .44s ease-out both;
 }
 
-.kicker, .panel-label, .badge, #frame-label, .scenario > span, .track-label > span {
+.kicker, .panel-label, .badge, .frame-readout, .scenario > span, .track-label > span {
   font: 600 .74rem/1.25 var(--mono);
   letter-spacing: .085em;
   text-transform: uppercase;
@@ -135,7 +135,20 @@ main {
 .badge { display: inline-flex; align-items: center; gap: 8px; color: var(--green); }
 .badge::before { content: ""; width: 7px; height: 7px; background: currentColor; transform: rotate(45deg); }
 .badge.offline { color: var(--red); }
-#frame-label { color: var(--deck-muted); white-space: nowrap; }
+.frame-readout { gap: 6px; color: var(--deck-muted); white-space: nowrap; }
+.frame-readout input {
+  appearance: textfield;
+  min-height: 28px;
+  width: 6ch;
+  padding: 2px 4px;
+  text-align: center;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+.frame-readout input::-webkit-inner-spin-button,
+.frame-readout input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.frame-tools { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+#restart { min-height: 28px; padding-block: 2px; font-size: .82rem; }
 
 .stage {
   position: relative;
@@ -174,9 +187,7 @@ main {
   font-weight: 700;
 }
 .controls #play:not(:disabled):hover { background: #ffd0a4; }
-.speed, .go { font-size: .86rem; color: var(--deck-muted); }
-.go { margin-left: auto; }
-.go input { width: 76px; font-family: var(--mono); }
+.speed { font-size: .86rem; color: var(--deck-muted); }
 
 .scrubber { padding: 2px 13px 9px; }
 #timeline {
@@ -230,6 +241,7 @@ aside button:focus-visible, aside select:focus-visible { outline-color: var(--pl
 aside button:not(:disabled):hover { background: #e1e6d0; border-color: #6b8066; }
 .track-label { margin-block: 11px 8px; color: var(--muted-ink); }
 .track-label select { max-width: min(230px, 60vw); }
+.frame-details { border-top: 1px solid var(--paper-line); padding: 10px 16px 13px; }
 #status, .note { font-size: .86rem; color: var(--muted-ink); }
 #status { color: var(--ink); }
 #metrics {
@@ -283,7 +295,6 @@ dd { margin: 0; font: .81rem/1.5 var(--mono); }
   .masthead { align-items: stretch; flex-direction: column; gap: 16px; }
   .scenario { width: 100%; }
   .controls { row-gap: 9px; }
-  .go { margin-left: 0; }
   .video-bar { gap: 4px 8px; }
   .layers { column-gap: 12px; }
 }

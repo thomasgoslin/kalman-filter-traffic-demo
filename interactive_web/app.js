@@ -9,10 +9,11 @@ const statusText = {updated:"Kalman update", initialized:"Initialized from detec
 const layers = {forecast:"forecast", detection:"measurement", corrected:"update"};
 const boxes = ["forecast", "detection", "corrected"];
 const overlayInputs = [...Object.values(layers), "ellipse", "ids"].map($);
-const timeline = $("timeline");
-let draggingTimeline = false;
+const timeline = $("timeline"), frameNumber = $("frame-number");
+let draggingTimeline = false, editingFrame = false;
 let manifest, run, frames = [], index = [], history = null, selected = null, hovered = null;
-let frame = 0, tab = "position", pendingSeek = null, runVersion = 0, trackVersion = 0;
+let frame = 0, tab = "position", runVersion = 0, trackVersion = 0;
+let pendingSeek = null, queuedSeek = null;
 
 async function get(path) {
   const response = await fetch(path);
@@ -143,9 +144,8 @@ function hit(event) {
 function refresh() {
   if (!manifest) return;
   const data = frames[frame];
-  $("frame-label").textContent = "Source frame " + frame + " / " + (manifest.frame_count - 1);
   if (!draggingTimeline) timeline.value = frame;
-  if (document.activeElement !== $("frame-number")) $("frame-number").value = frame;
+  if (!editingFrame) frameNumber.value = frame;
   $("detector").textContent = data ? (data.withheld ? "DETECTOR OFFLINE" : "DETECTOR ONLINE") : "Loading";
   $("detector").classList.toggle("offline", !!data?.withheld);
   drawOverlay();
@@ -157,11 +157,19 @@ function refreshInspector() {
   $("track-title").textContent = selected === null ? "Track inspector" : "Track " + selected;
   $("clear").disabled = selected === null;
   $("analytics").hidden = !history;
-  const metrics = $("metrics");
-  metrics.hidden = !record || record.status === "expired";
-  metrics.replaceChildren();
+  $("metrics").hidden = !history;
+  const current = record?.status === "expired" ? null : record;
+  const missing = "—";
+  $("box-size").textContent = current
+    ? current.x_current[2].toFixed(1) + " × " + current.x_current[3].toFixed(1) + " px" : missing;
+  $("center-sigma").textContent = current
+    ? Math.sqrt(current.P_current[0][0]).toFixed(2) + " / " + Math.sqrt(current.P_current[1][1]).toFixed(2) + " px"
+    : missing;
+  $("miss-count").textContent = current?.misses ?? missing;
+  $("detector-score").textContent = current?.detection_confidence == null
+    ? missing : (100 * current.detection_confidence).toFixed(1) + "%";
   if (selected === null) {
-    $("status").textContent = "Pause and click a car, or choose a track by ID.";
+    $("status").textContent = "Click a car or choose a track by ID.";
   } else if (!history) {
     $("status").textContent = "Loading track history…";
   } else if (frame > meta.last) {
@@ -172,19 +180,8 @@ function refreshInspector() {
   } else if (frame < meta.first) {
     $("status").textContent = "Track starts at frame " + meta.first + ".";
   } else {
-    const context = record.status === "predicted" ? (record.withheld ? " · Global outage" : " · No assigned measurement") : "";
+    const context = record.status === "predicted" ? (record.withheld ? " (global outage)" : " (no assigned measurement)") : "";
     $("status").textContent = statusText[record.status] + context;
-    const values = [
-      ["Box size", record.x_current[2].toFixed(1) + " × " + record.x_current[3].toFixed(1) + " px"],
-      ["Center σ (x / y)", Math.sqrt(record.P_current[0][0]).toFixed(2) + " / " + Math.sqrt(record.P_current[1][1]).toFixed(2) + " px"],
-      ["Consecutive misses", record.misses],
-    ];
-    if (record.detection_confidence !== null) values.push(["Detector score", (100 * record.detection_confidence).toFixed(1) + "%"]);
-    for (const [key, value] of values) {
-      const dt = document.createElement("dt"), dd = document.createElement("dd");
-      dt.textContent = key; dd.textContent = value;
-      metrics.append(dt, dd);
-    }
   }
   if (history) renderCharts();
 }
@@ -267,7 +264,7 @@ function trajectory(canvas) {
   const w = Math.max(...xs) - minX + 25, h = Math.max(...ys) - minY + 25;
   const scale = Math.min((width-25)/w,(height-48)/h);
   const offsetX = (width - w*scale)/2, offsetY = 29 + (height-48 - h*scale)/2;
-  ctx.fillStyle = theme("ink"); ctx.font = "12px " + mono; ctx.fillText("Center trajectory · image pixels, y down", 5, 15);
+  ctx.fillStyle = theme("ink"); ctx.font = "12px " + mono; ctx.fillText("Center trajectory (image pixels, y down)", 5, 15);
   ctx.save(); ctx.translate(offsetX-minX*scale,offsetY-minY*scale); ctx.scale(scale,scale);
   const x = (_,state) => state[0], y = (_,state) => state[1];
   series(ctx, rows, x, y, row => row.x_pred, plotColors.forecast,{dashed:true});
@@ -328,7 +325,7 @@ async function loadRun(id) {
     if (version !== runVersion) return;
     if (geometry.length !== manifest.frame_count) throw new Error("Simulation frame count does not match the source video.");
     run = next; frames = geometry; index = tracks;
-    $("track").replaceChildren(new Option("Choose a track",""),...index.map(item => new Option("ID " + item.id + " · frames " + item.first + "–" + item.last,item.id)));
+    $("track").replaceChildren(new Option("Choose a track",""),...index.map(item => new Option("ID " + item.id + " (frames " + item.first + "–" + item.last + ")",item.id)));
     $("track").disabled = !index.length;
     $("outages").replaceChildren(...run.outages.map(([start,end]) => {
       const item = document.createElement("i");
@@ -352,22 +349,33 @@ function frameAtTime(time) {
   return lo;
 }
 
-function updateTime(time) {
-  if (!manifest || pendingSeek !== null) return;
+function presentFrame(time) {
+  if (!manifest) return;
   const next = frameAtTime(time);
+  if (pendingSeek !== null && (next < pendingSeek || (video.paused && next !== pendingSeek))) return;
   if (next !== frame) { frame = next; refresh(); }
+  pendingSeek = null;
+  if (queuedSeek !== null) {
+    const requested = queuedSeek;
+    queuedSeek = null;
+    seek(requested, {pause:false});
+  }
 }
 
 function seek(value, {pause = true} = {}) {
   if (!manifest || video.readyState < 1 || !Number.isFinite(value)) return;
   if (pause) video.pause();
-  frame = Math.min(manifest.frame_count-1,Math.max(0,Math.round(value)));
-  const start = manifest.timestamps[frame], end = manifest.timestamps[frame+1] ?? video.duration;
+  const requested = Math.min(manifest.frame_count-1,Math.max(0,Math.round(value)));
+  // Let the current seek reach the screen before sending the latest queued target.
+  if (pendingSeek !== null) {
+    queuedSeek = requested;
+    return;
+  }
+  const start = manifest.timestamps[requested], end = manifest.timestamps[requested+1] ?? video.duration;
   const target = start + Math.max(0,(end-start)/2);
-  pendingSeek = frame;
-  if (Math.abs(video.currentTime - target) > 0.00001) video.currentTime = target;
-  else pendingSeek = null;
-  refresh();
+  if (requested === frame && Math.abs(video.currentTime - target) < 0.00001) return;
+  pendingSeek = requested;
+  video.currentTime = target;
 }
 
 function togglePlay() {
@@ -378,6 +386,7 @@ function togglePlay() {
 }
 
 $("play").onclick = togglePlay;
+$("restart").onclick = () => seek(0, {pause:false});
 $("speed").onchange = event => {video.playbackRate = Number(event.target.value);};
 timeline.oninput = () => seek(timeline.valueAsNumber, {pause:false});
 timeline.onpointerdown = () => { draggingTimeline = true; };
@@ -388,7 +397,15 @@ function finishTimelineDrag() {
 }
 window.addEventListener("pointerup", finishTimelineDrag);
 window.addEventListener("pointercancel", finishTimelineDrag);
-$("frame-number").onchange = event => seek(event.target.valueAsNumber);
+frameNumber.oninput = () => { editingFrame = true; };
+frameNumber.onchange = () => seek(frameNumber.valueAsNumber);
+frameNumber.onblur = () => {
+  editingFrame = false;
+  frameNumber.value = queuedSeek ?? pendingSeek ?? frame;
+};
+frameNumber.onkeydown = event => {
+  if (event.key === "Enter") frameNumber.blur();
+};
 $("run").onchange = event => loadRun(event.target.value);
 $("track").onchange = event => selectTrack(event.target.value ? Number(event.target.value) : null);
 $("clear").onclick = () => selectTrack(null);
@@ -406,18 +423,19 @@ stage.onpointermove = event => {
   const track = hit(event);
   hovered = track?.id ?? null;
   $("hover").hidden = !track;
-  if (track) $("hover").textContent = "ID " + track.id + " · " + statusText[track.status];
+  if (track) $("hover").textContent = "ID " + track.id + " (" + statusText[track.status] + ")";
   stage.style.cursor = track ? "pointer" : "";
   drawOverlay();
 };
 stage.onpointerleave = () => {hovered = null; $("hover").hidden = true; drawOverlay();};
 stage.onclick = event => {
   const track = hit(event);
-  if (track) { video.pause(); selectTrack(track.id); }
+  if (track) selectTrack(track.id);
 };
 stage.onkeydown = event => {
   if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-    event.preventDefault(); seek(frame + (event.key === "ArrowRight" ? 1 : -1));
+    const target = queuedSeek ?? pendingSeek ?? frame;
+    event.preventDefault(); seek(target + (event.key === "ArrowRight" ? 1 : -1));
   }
 };
 const page = document.documentElement;
@@ -444,14 +462,18 @@ for (const id of ["chart-a","chart-b"]) $(id).onclick = event => {
 for (const event of ["play","pause","ended"]) video.addEventListener(event,() => {
   $("play").textContent = video.paused ? "Play" : "Pause";
 });
-video.addEventListener("seeked",() => {
-  pendingSeek = null;
-  updateTime(video.currentTime);
-});
 if (video.requestVideoFrameCallback) {
-  const present = (_, metadata) => {updateTime(metadata.mediaTime); video.requestVideoFrameCallback(present);};
+  const present = (_, metadata) => {
+    presentFrame(metadata.mediaTime);
+    video.requestVideoFrameCallback(present);
+  };
   video.requestVideoFrameCallback(present);
-} else video.addEventListener("timeupdate",() => updateTime(video.currentTime));
+} else {
+  video.addEventListener("seeked", () => presentFrame(video.currentTime));
+  video.addEventListener("timeupdate", () => {
+    if (!video.seeking) presentFrame(video.currentTime);
+  });
+}
 new ResizeObserver(() => { drawOverlay(); if (history) renderCharts(); }).observe(stage);
 new ResizeObserver(() => { if (history) renderCharts(); }).observe($("chart-a"));
 
@@ -461,7 +483,8 @@ async function init() {
     throw new Error("The demo export is incomplete. Run build_interactive_export.py again.");
   }
   $("run").replaceChildren(...manifest.runs.map(item => new Option(item.label,item.id)));
-  $("timeline").max = $("frame-number").max = manifest.frame_count - 1;
+  timeline.max = frameNumber.max = manifest.frame_count - 1;
+  $("last-frame").textContent = frameNumber.max;
   stage.style.aspectRatio = manifest.width + "/" + manifest.height;
   // Loading the small source clip once enables arbitrary seeks on the static Python server.
   const media = fetch(manifest.video).then(response => {
@@ -475,7 +498,7 @@ async function init() {
       showError(new Error("The source video dimensions do not match the tracking export."));
       return;
     }
-    for (const id of ["run","play","timeline","frame-number"]) $(id).disabled = false;
+    for (const id of ["run","play","restart","timeline","frame-number"]) $(id).disabled = false;
     refresh();
   },{once:true});
   video.addEventListener("error",() => showError(new Error("This browser could not play the source MP4.")),{once:true});
