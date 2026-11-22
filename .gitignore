@@ -2,7 +2,7 @@
 __pycache__/
 *.py[cod]
 *.mp4
-!/classroom_assets/source.mp4
+!/cloudflare_assets/source.mp4
 *.mov
 *.mkv
 *.avi

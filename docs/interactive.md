@@ -16,6 +16,10 @@ Press Space to play or pause in Simulation. Click a car to pin it, or choose its
 
 Cyan is the forecast, yellow is the measurement, and green is the Kalman correction. A detector can be online while an individual track still lacks a match. When detections first return after a global outage, unmatched old tracks are retired. The bands and ellipses describe the model's estimated uncertainty in the state.
 
+## Cloudflare mode
+
+The [Cloudflare-hosted app](https://kalman-filter.tmgoslin.workers.dev/) uses the bundled video and detections and runs custom experiments in the browser. To build and preview that version locally, run `python -m traffic_lab.cloudflare build` followed by `python -m traffic_lab.cloudflare serve`. The [Cloudflare mode instructions](../README.md#cloudflare-mode) cover deployment.
+
 ## Run a custom experiment
 
 Open **Settings**, choose a starting preset, and edit the tracker, detector, outage, measurement noise, or display parameters. Expand the matrix section to edit F, H, the per-frame offset, the covariances, or the initial velocity. **Reset to preset** restores the starting values. **Run experiment** computes a separate result, which can be opened in Simulation alongside the standard scenarios.

@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:classroom": "python -m traffic_lab.classroom build",
-    "deploy:classroom": "cf deploy --no-provision"
+    "build:cloudflare": "python -m traffic_lab.cloudflare build",
+    "deploy:cloudflare": "cf deploy --no-provision"
   },
   "devDependencies": {
     "cf": "1.0.0-rc.2",

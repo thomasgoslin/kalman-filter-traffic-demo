@@ -4,15 +4,15 @@ const jobs = new Map();
 let setup, database, worker, active, activeMeta;
 
 async function loadSetup() {
-  const response = await fetch("/classroom-settings.json");
-  if (!response.ok) throw new Error("The classroom settings could not be loaded.");
+  const response = await fetch("/cloudflare-settings.json");
+  if (!response.ok) throw new Error("The Cloudflare mode settings could not be loaded.");
   return response.json();
 }
 
 async function openDatabase() {
   const {source} = await (setup ??= loadSetup());
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open("kalman-classroom-" + source, 1);
+    const request = indexedDB.open("kalman-cloudflare-" + source, 1);
     request.onupgradeneeded = () => {
       const store = request.result.createObjectStore("experiments", {keyPath:"run.id"});
       store.createIndex("name", "name", {unique:true});
@@ -43,7 +43,7 @@ function fail(job, message, reason = "worker") {
 }
 
 function startWorker() {
-  const instance = new Worker("/classroom-worker.js");
+  const instance = new Worker("/cloudflare-worker.js");
   instance.onmessage = async ({data: {job, message, result, error}}) => {
     if (job !== active) return;
     if (error) {

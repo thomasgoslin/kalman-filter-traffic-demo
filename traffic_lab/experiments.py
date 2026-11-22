@@ -68,10 +68,10 @@ def matrix(value, name, shape):
 
 
 class Experiments:
-    def __init__(self, source_id="default", *, classroom=None):
+    def __init__(self, source_id="default", *, hosted_dir=None):
         self.source_id = source_id
-        if classroom is not None:
-            folder = classroom
+        if hosted_dir is not None:
+            folder = hosted_dir
             self.source = None
             cache = folder / "detections.json"
         elif source_id == "default":
@@ -84,7 +84,7 @@ class Experiments:
             cache = folder / "detections.json"
         self.manifest = read_json(folder / "manifest.json")
         self.source_hash = self.manifest["source_sha256"]
-        if classroom is None and source_id == "default" and digest(self.source) != self.source_hash:
+        if hosted_dir is None and source_id == "default" and digest(self.source) != self.source_hash:
             raise ValueError("The preview uses a different video. Run python -m traffic_lab.export first.")
         self.frames, detector = read_cache(cache, self.source_hash)
         self.detector = dict(detector, weights=Path(detector["weights"]).name)

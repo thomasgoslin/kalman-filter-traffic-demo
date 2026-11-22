@@ -2,7 +2,7 @@
 
 An interactive browser lab for teaching the **linear Kalman filter** with traffic footage. YOLO supplies bounding-box observations. The filter estimates each track's box center, size, velocity, and uncertainty.
 
-[Open the classroom site](https://kalman-filter.tmgoslin.workers.dev/) | [Quick start](#quick-start) | [Custom experiments](#custom-experiments) | [Four standard scenarios](#four-simulation-examples) | [Annotated video and frame exports](#run)
+[Open the Cloudflare-hosted site](https://kalman-filter.tmgoslin.workers.dev/) | [Quick start](#quick-start) | [Custom experiments](#custom-experiments) | [Four standard scenarios](#four-simulation-examples) | [Annotated video and frame exports](#run)
 
 ![Simulation view showing track 19 at frame 315, with a forecast ellipse and synchronized position plots](docs/demo/interactive-lab.jpg)
 
@@ -33,50 +33,50 @@ python -m traffic_lab.server
 
 The weights may download on the first YOLO pass. Source video and local weights under `inputs/`, plus generated videos, caches, and experiments under `outputs/`, stay local. The [setup guide](docs/interactive.md) covers refresh, rebuilding, and stopping the server.
 
-## Classroom mode
+## Cloudflare mode
 
-Open the [live classroom site](https://kalman-filter.tmgoslin.workers.dev/) and enter the shared site PIN to use the fixed clip without installing anything. The same repository also supports a laptop workflow with uploads.
-The classroom site includes the four presets, bundles the existing detections, and runs the same
+Open the [live site](https://kalman-filter.tmgoslin.workers.dev/) and enter the shared site PIN to use the fixed clip without installing anything. The same repository also supports a laptop workflow with uploads.
+Cloudflare mode includes the four presets, bundles the existing detections, and runs the same
 Python Kalman simulation in a browser worker. Detector settings are fixed. Custom experiments are
 stored in the browser on that device. The first run downloads the browser Python runtime.
 
-The repository includes one fixed clip and its raw YOLO cache under `classroom_assets/`.
+The repository includes one fixed clip and its raw YOLO cache under `cloudflare_assets/`.
 The build regenerates all four scenarios from that one cache. It needs Python 3.11+, NumPy,
-and SciPy. The bundled frame timestamps allow classroom builds without FFmpeg or YOLO.
+and SciPy. The bundled frame timestamps allow Cloudflare builds without FFmpeg or YOLO.
 
-Build and preview the classroom version:
+Build and preview Cloudflare mode locally:
 
 ```powershell
-python -m traffic_lab.classroom build
-python -m traffic_lab.classroom serve
+python -m traffic_lab.cloudflare build
+python -m traffic_lab.cloudflare serve
 ```
 
-Open [the classroom preview](http://127.0.0.1:8001/). The normal laptop launcher still runs on
-port 8000. Rebuild the classroom output after changing the shared viewer or simulation code.
+Open [the Cloudflare preview](http://127.0.0.1:8001/). The normal laptop launcher still runs on
+port 8000. Rebuild the Cloudflare output after changing the shared viewer or simulation code.
 
 ### Update the live site from main
 
-The [Deploy classroom workflow](https://github.com/thomasgoslin/kalman-filter-traffic-demo/actions/workflows/deploy-classroom.yml)
-builds and deploys pushes to `main`. It uses a Cloudflare token scoped to the classroom Worker.
+The [Deploy to Cloudflare workflow](https://github.com/thomasgoslin/kalman-filter-traffic-demo/actions/workflows/deploy-cloudflare.yml)
+builds and deploys pushes to `main`. It uses a Cloudflare token scoped to the site's Worker.
 Check the run in GitHub Actions after pushing, or use **Run workflow** from the same page to deploy
 `main` again.
 
 The workflow uses the repository secret `CLOUDFLARE_API_TOKEN` and the repository variable
 `CLOUDFLARE_ACCOUNT_ID` under **Settings → Secrets and variables → Actions**.
-To deploy manually, use `npm ci`, `npx cf auth login`, `npm run build:classroom`, and
-`npm run deploy:classroom`.
+To deploy manually, use `npm ci`, `npx cf auth login`, `npm run build:cloudflare`, and
+`npm run deploy:cloudflare`.
 
 The live site checks the shared PIN in a Cloudflare Worker before serving the page, video, or
 data. The Worker reads the eight-digit `SITE_PIN` and a separate 64-character hexadecimal
 `SESSION_SIGNING_KEY` from Cloudflare secrets. Set or rotate them using a private JSON file with
-`npx cf deploy --no-provision --secrets-file <private-json-file>` after building the classroom site.
+`npx cf deploy --no-provision --secrets-file <private-json-file>` after building the Cloudflare site.
 Rotating the PIN invalidates earlier sessions. Sessions last up to 12 hours. The PIN does
 not restrict access to the copies of the clip and detections in this public repository.
 
-Only the Worker and `outputs/classroom` are deployed. Personal inputs, uploads, and generated outputs stay
-out of Git. The committed MP4 and raw detection cache are the classroom's two fixed inputs.
+Only the Worker and `outputs/cloudflare` are deployed. Personal inputs, uploads, and generated outputs stay
+out of Git. The committed MP4 and raw detection cache are the two fixed inputs for Cloudflare mode.
 
-For a quick classroom exercise, start from **Short outages + noise** and keep the seed fixed.
+For a quick exercise, start from **Short outages + noise** and keep the seed fixed.
 Run two experiments with different values of the observation covariance `R`. Compare how strongly
 the green analysis follows the yellow measurements for one clearly visible car.
 
@@ -184,7 +184,9 @@ The [implementation brief](docs/implementation.md) explains the filter and its c
 ## Project layout
 
 - [`traffic_lab/`](traffic_lab/) contains the tracker, shared presets, local experiment server, and video and browser exports.
-- [`interactive_web/`](interactive_web/) contains the static browser interface.
+- [`interactive_web/`](interactive_web/) contains the shared browser interface.
+- [`cloudflare_web/`](cloudflare_web/) contains the browser simulator and usage reporting for Cloudflare mode.
+- [`cloudflare_assets/`](cloudflare_assets/) contains the bundled video and detections.
 - [`docs/`](docs/) contains setup instructions, technical notes, and example images.
 
 Run `python -m traffic_lab.export` to rebuild the interactive data, or `python -m traffic_lab.batch` to rerender all four annotated videos. The Windows launcher and original script commands also work.

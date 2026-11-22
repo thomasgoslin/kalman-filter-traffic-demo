@@ -1,5 +1,5 @@
 import {initializeSettings} from "./settings.js";
-import {classroomApi} from "./experiment-api.js";
+import {cloudflareApi} from "./experiment-api.js";
 
 const $ = id => document.getElementById(id);
 const video = $("video"), stage = video.parentElement, overlay = $("overlay");
@@ -28,7 +28,7 @@ const sourcePath = id => id === "default" ? "/" : "/videos/" + id + "/";
 const runPath = item => item.settings ? "/experiments/" + item.id : sourcePath(currentSource) + item.id;
 
 async function get(path) {
-  if (classroomApi && path.startsWith("/experiments/")) return (await classroomApi).request(path);
+  if (cloudflareApi && path.startsWith("/experiments/")) return (await cloudflareApi).request(path);
   const response = await fetch(path);
   if (!response.ok) throw new Error("Could not load " + path + " (" + response.status + ").");
   return response.json();
@@ -811,7 +811,7 @@ async function loadSource(id, saved = []) {
 
 async function init() {
   await loadSource("default");
-  if (classroomApi) {
+  if (cloudflareApi) {
     import("./usage.js").then(usage => {
       usage.measurePlayback(video);
       track = usage.reportUsage;

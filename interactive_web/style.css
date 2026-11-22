@@ -733,4 +733,4 @@ dd { margin: 0; font: .81rem/1.5 var(--mono); }
   pointer-events: none;
 }
 
-[data-classroom] [data-local-only] { display: none; }
+[data-cloudflare] [data-local-only] { display: none; }
