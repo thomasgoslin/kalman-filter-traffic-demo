@@ -449,15 +449,58 @@ const fullscreenButton = $("simulation-fullscreen");
 const presentationActive = () => document.fullscreenElement === simulation || simulation.classList.contains("simulation-expanded");
 const player = stage.closest(".player");
 const simulationToolbar = fullscreenButton.parentElement;
+const simulationSplitter = $("simulation-splitter");
+let playerShare = 0.9;
+let minPlayerWidth = 0, maxPlayerWidth = 0;
+let splitterDrag = null;
+
+function applyPresentationSplit() {
+  const width = Math.floor(minPlayerWidth + playerShare * (maxPlayerWidth - minPlayerWidth));
+  simulation.style.setProperty("--presentation-player-width", width + "px");
+  simulationSplitter.setAttribute("aria-valuenow", Math.round(playerShare * 100));
+}
+
 function sizePresentationPlayer() {
-  if (!presentationActive() || !manifest) return;
+  if (!presentationActive() || !manifest || !simulationSplitter.offsetWidth) return;
   const layout = getComputedStyle(simulation);
   const playerHeight = simulation.clientHeight - simulationToolbar.offsetHeight
     - parseFloat(layout.paddingTop) - parseFloat(layout.paddingBottom) - parseFloat(layout.rowGap);
   const controlsHeight = player.offsetHeight - stage.offsetHeight;
   const videoWidth = (playerHeight - controlsHeight) * manifest.width / manifest.height;
-  simulation.style.setProperty("--presentation-player-width", Math.max(0, Math.floor(videoWidth + 2)) + "px");
+  const availableWidth = simulation.clientWidth - parseFloat(layout.paddingLeft) - parseFloat(layout.paddingRight)
+    - simulationSplitter.offsetWidth - parseFloat(layout.getPropertyValue("--inspector-min-width"));
+  maxPlayerWidth = Math.max(0, Math.min(videoWidth + player.offsetWidth - stage.offsetWidth, availableWidth));
+  minPlayerWidth = Math.min(maxPlayerWidth, Math.max(420, maxPlayerWidth * 0.65));
+  applyPresentationSplit();
 }
+
+function setPlayerShare(share) {
+  playerShare = Math.min(1, Math.max(0, share));
+  applyPresentationSplit();
+}
+
+simulationSplitter.onpointerdown = event => {
+  if (event.button !== 0 || !event.isPrimary || maxPlayerWidth <= minPlayerWidth) return;
+  simulationSplitter.focus({preventScroll:true});
+  splitterDrag = {id:event.pointerId, x:event.clientX, width:player.offsetWidth};
+  simulationSplitter.setPointerCapture(event.pointerId);
+  simulationSplitter.classList.add("is-dragging");
+};
+simulationSplitter.onpointermove = event => {
+  const range = maxPlayerWidth - minPlayerWidth;
+  if (splitterDrag?.id !== event.pointerId || range <= 0) return;
+  const width = splitterDrag.width + event.clientX - splitterDrag.x;
+  setPlayerShare((width - minPlayerWidth) / range);
+};
+simulationSplitter.onlostpointercapture = () => {
+  splitterDrag = null;
+  simulationSplitter.classList.remove("is-dragging");
+};
+simulationSplitter.onkeydown = event => {
+  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+  event.preventDefault();
+  setPlayerShare(playerShare + (event.key === "ArrowUp" ? 0.05 : -0.05));
+};
 const presentationResize = new ResizeObserver(sizePresentationPlayer);
 for (const element of [simulation, simulationToolbar, player]) presentationResize.observe(element);
 function syncFullscreenButton() {

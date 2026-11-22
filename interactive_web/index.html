@@ -30,7 +30,7 @@
           <label class="scenario"><span>Scenario</span><select id="run" disabled></select></label>
           <button id="simulation-fullscreen" type="button" hidden>Fullscreen</button>
         </div>
-        <section class="player" aria-label="Traffic video">
+        <section id="simulation-player" class="player" aria-label="Traffic video">
           <div class="video-bar">
             <span id="detector" class="badge">Loading</span>
             <div class="frame-tools">
@@ -64,6 +64,10 @@
             <label><input type="checkbox" id="ids" checked> IDs</label>
           </div>
         </section>
+        <div id="simulation-splitter" role="separator" tabindex="0" aria-orientation="vertical"
+             aria-label="Resize video and inspector" aria-controls="simulation-player estimate-panel"
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="90"
+             aria-keyshortcuts="ArrowUp ArrowDown" title="Drag to resize. Use Up or Down when focused."></div>
         <aside id="estimate-panel" aria-label="Selected vehicle analytics">
           <div class="inspector">
             <div class="inspector-top">

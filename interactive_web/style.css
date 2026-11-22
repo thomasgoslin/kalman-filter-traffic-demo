@@ -128,16 +128,54 @@ button:not(:disabled):hover { border-color: var(--accent); }
 #simulation.simulation-expanded { position: fixed; inset: 0; z-index: 10; }
 body:has(#simulation.simulation-expanded) { overflow: hidden; }
 
+#simulation-splitter { display: none; }
+
 @media (min-width: 871px) and (min-height: 550px) {
   #simulation:is(:fullscreen, .simulation-expanded) {
     --inspector-min-width: 315px;
+    --splitter-width: 24px;
+    column-gap: 0;
     grid-template-columns:
-      minmax(0, min(var(--presentation-player-width, 100%), calc(100% - var(--inspector-min-width) - 12px)))
+      minmax(0, min(var(--presentation-player-width, 70%), calc(100% - var(--inspector-min-width) - var(--splitter-width))))
+      var(--splitter-width)
       minmax(var(--inspector-min-width), 1fr);
     grid-template-rows: auto minmax(0, 1fr);
   }
   #simulation:is(:fullscreen, .simulation-expanded) > #estimate-panel { max-height: 100%; overflow: auto; }
+  #simulation:is(:fullscreen, .simulation-expanded) > #simulation-splitter {
+    display: grid;
+    position: relative;
+    align-self: stretch;
+    place-items: center;
+    cursor: col-resize;
+    touch-action: none;
+    outline-offset: -2px;
+  }
+  #simulation-splitter::before {
+    content: "";
+    position: absolute;
+    inset-block: 8px;
+    width: 1px;
+    background: linear-gradient(transparent, var(--deck-line) 20% 80%, transparent);
+  }
+  #simulation-splitter::after {
+    content: "";
+    z-index: 1;
+    width: 12px;
+    height: 48px;
+    border: 1px solid var(--deck-line);
+    border-radius: 3px;
+    background: radial-gradient(circle, var(--accent) 1px, transparent 1.5px) center / 6px 6px repeat-y,
+      var(--deck);
+    transition: background-color .15s ease, border-color .15s ease;
+  }
+  #simulation-splitter:is(:hover, :focus-visible, .is-dragging)::after {
+    background-color: var(--deck-dark);
+    border-color: var(--accent);
+  }
+  #simulation:has(#simulation-splitter.is-dragging) { user-select: none; }
 }
+
 
 .player, aside {
   min-width: 0;
