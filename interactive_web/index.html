@@ -16,7 +16,6 @@
 <body>
   <header class="masthead">
     <div class="heading"><h1>Kalman Traffic Lab</h1></div>
-    <label id="scenario-control" class="scenario"><span>Scenario</span><select id="run" disabled></select></label>
   </header>
   <p id="error" role="alert" hidden></p>
   <div class="lab-layout">
@@ -27,6 +26,10 @@
     </nav>
     <main id="lab-content">
       <section id="simulation" aria-label="Simulation">
+        <div class="simulation-toolbar">
+          <label class="scenario"><span>Scenario</span><select id="run" disabled></select></label>
+          <button id="simulation-fullscreen" type="button" hidden>Fullscreen</button>
+        </div>
         <section class="player" aria-label="Traffic video">
           <div class="video-bar">
             <span id="detector" class="badge">Loading</span>
@@ -99,6 +102,7 @@
             </dl>
           </div>
         </aside>
+        <dialog id="estimate-dialog" aria-labelledby="track-title"></dialog>
       </section>
       <article id="model" class="model-view" tabindex="-1" aria-labelledby="model-title" hidden>
         <header class="model-heading">
@@ -371,6 +375,5 @@
     </main>
   </div>
   <div id="experiment-toast" role="status"></div>
-  <dialog id="estimate-dialog" aria-labelledby="track-title"></dialog>
 </body>
 </html>

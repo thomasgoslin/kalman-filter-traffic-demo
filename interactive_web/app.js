@@ -445,6 +445,37 @@ frameNumber.onkeydown = event => {
 $("run").onchange = event => { track("scenario_change", 1, /^[a-f0-9]{32}$/.test(event.target.value) ? "custom" : "preset"); loadRun(event.target.value); };
 $("track").onchange = event => selectTrack(event.target.value ? Number(event.target.value) : null);
 $("clear").onclick = () => selectTrack(null);
+const fullscreenButton = $("simulation-fullscreen");
+const presentationActive = () => document.fullscreenElement === simulation || simulation.classList.contains("simulation-expanded");
+function syncFullscreenButton() {
+  fullscreenButton.textContent = presentationActive() ? "Exit fullscreen" : "Fullscreen";
+}
+function exitPresentation() {
+  if (document.fullscreenElement === simulation) {
+    document.exitFullscreen().catch(showError);
+  } else {
+    simulation.classList.remove("simulation-expanded");
+    syncFullscreenButton();
+  }
+}
+fullscreenButton.hidden = false;
+fullscreenButton.onclick = async () => {
+  if (presentationActive()) {
+    exitPresentation();
+    return;
+  }
+  if (document.fullscreenEnabled) {
+    try {
+      await simulation.requestFullscreen();
+      return;
+    } catch {
+      // Embedded browsers can deny native fullscreen.
+    }
+  }
+  simulation.classList.add("simulation-expanded");
+  syncFullscreenButton();
+};
+document.addEventListener("fullscreenchange", syncFullscreenButton);
 const estimateHome = estimatePanel.parentElement;
 $("expand-estimate").onclick = () => {
   track("chart_expand");
@@ -502,8 +533,9 @@ document.addEventListener("keydown", event => {
   if (playbackShortcut) {
     event.preventDefault();
     if (!event.repeat && !$("play").disabled) togglePlay();
-  } else if (event.key === "Escape" && !estimateDialog.open && !simulation.hidden) {
-    selectTrack(null);
+  } else if (event.key === "Escape" && !estimateDialog.open && !simulation.hidden && !document.fullscreenElement) {
+    if (simulation.classList.contains("simulation-expanded")) exitPresentation();
+    else selectTrack(null);
   }
 }, {capture:true});
 for (const button of document.querySelectorAll("[data-tab]")) button.onclick = () => {
@@ -540,7 +572,7 @@ function showView(view, {focus = false} = {}) {
   currentView = view;
   viewChanged(view);
   for (const panel of [simulation, modelView, settingsView]) panel.hidden = panel.id !== view;
-  $("scenario-control").hidden = view !== "simulation";
+  if (view !== "simulation" && presentationActive()) exitPresentation();
   for (const link of navLinks) {
     if (link.dataset.view === view) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
