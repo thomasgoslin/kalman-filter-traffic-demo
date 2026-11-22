@@ -447,7 +447,21 @@ $("track").onchange = event => selectTrack(event.target.value ? Number(event.tar
 $("clear").onclick = () => selectTrack(null);
 const fullscreenButton = $("simulation-fullscreen");
 const presentationActive = () => document.fullscreenElement === simulation || simulation.classList.contains("simulation-expanded");
+const player = stage.closest(".player");
+const simulationToolbar = fullscreenButton.parentElement;
+function sizePresentationPlayer() {
+  if (!presentationActive() || !manifest) return;
+  const layout = getComputedStyle(simulation);
+  const playerHeight = simulation.clientHeight - simulationToolbar.offsetHeight
+    - parseFloat(layout.paddingTop) - parseFloat(layout.paddingBottom) - parseFloat(layout.rowGap);
+  const controlsHeight = player.offsetHeight - stage.offsetHeight;
+  const videoWidth = (playerHeight - controlsHeight) * manifest.width / manifest.height;
+  simulation.style.setProperty("--presentation-player-width", Math.max(0, Math.floor(videoWidth + 2)) + "px");
+}
+const presentationResize = new ResizeObserver(sizePresentationPlayer);
+for (const element of [simulation, simulationToolbar, player]) presentationResize.observe(element);
 function syncFullscreenButton() {
+  sizePresentationPlayer();
   fullscreenButton.textContent = presentationActive() ? "Exit fullscreen" : "Fullscreen";
 }
 function exitPresentation() {
@@ -519,20 +533,20 @@ stage.onclick = event => {
     selectTrack(track.id);
   }
 };
-stage.onkeydown = event => {
-  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-    const target = queuedSeek ?? pendingSeek ?? frame;
-    event.preventDefault(); seek(target + (event.key === "ArrowRight" ? 1 : -1));
-  }
-};
 const page = document.documentElement;
 document.addEventListener("pointerdown", () => page.classList.remove("playback-shortcut"), {capture:true});
 document.addEventListener("keydown", event => {
-  const playbackShortcut = !simulation.hidden && event.code === "Space" && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
-  page.classList.toggle("playback-shortcut", playbackShortcut);
+  const simulationShortcut = !simulation.hidden && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+  const playbackShortcut = simulationShortcut && event.code === "Space";
+  const frameShortcut = simulationShortcut && (event.key === "ArrowLeft" || event.key === "ArrowRight");
+  page.classList.toggle("playback-shortcut", playbackShortcut || frameShortcut);
   if (playbackShortcut) {
     event.preventDefault();
     if (!event.repeat && !$("play").disabled) togglePlay();
+  } else if (frameShortcut) {
+    event.preventDefault();
+    const target = queuedSeek ?? pendingSeek ?? frame;
+    seek(target + (event.key === "ArrowRight" ? 1 : -1));
   } else if (event.key === "Escape" && !estimateDialog.open && !simulation.hidden && !document.fullscreenElement) {
     if (simulation.classList.contains("simulation-expanded")) exitPresentation();
     else selectTrack(null);
@@ -724,6 +738,7 @@ async function loadSource(id, saved = []) {
   timeline.max = frameNumber.max = manifest.frame_count - 1;
   $("last-frame").textContent = frameNumber.max;
   stage.style.aspectRatio = manifest.width + "/" + manifest.height;
+  sizePresentationPlayer();
   $("outages").replaceChildren();
   const geometry = loadRun(manifest.runs[0].id);
   const metadata = new Promise((resolve, reject) => {
