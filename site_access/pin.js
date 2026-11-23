@@ -28,7 +28,6 @@ function login(message = "", status = 200) {
     button { margin-top: .35rem; border: 0; background: #1b322c; color: #fff; cursor: pointer; }
     :focus-visible { outline: 2px solid #00798b; outline-offset: 2px; }
     p { margin: 0; color: #8b302c; }
-    .usage-note { margin-top: 1rem; color: #4f6258; font-size: .86rem; }
   </style>
 </head>
 <body>
@@ -40,7 +39,6 @@ function login(message = "", status = 200) {
       ${message ? `<p role="alert">${message}</p>` : ""}
       <button type="submit">Enter site</button>
     </form>
-    <p class="usage-note">This site records anonymous usage events (pages visited, playback time, which controls are used, and experiment outcomes) under a random ID that lasts only while this tab is open. Records never include your name, IP address, or experiment contents.</p>
   </main>
 </body>
 </html>`, {
