@@ -398,7 +398,7 @@ function renderDensities(record) {
     : record.status === "initialized" ? "The first detection initializes the state. " : "";
   $("chart-note").textContent = explanation
     + "Each curve is a Gaussian marginal at frame " + frame
-    + ". μ is its mean and σ its standard deviation. A vertical line represents zero variance.";
+    + ". μ is its mean and σ its standard deviation.";
 }
 
 function renderCharts() {
