@@ -10,8 +10,8 @@
       document.documentElement.dataset.initialView = ["model", "settings"].includes(path) ? path : "simulation";
     }
   </script>
-  <link rel="stylesheet" href="/style.css">
-  <script type="module" src="/app.js"></script>
+  <link rel="stylesheet" href="/style.css?v=densities">
+  <script type="module" src="/app.js?v=densities"></script>
 </head>
 <body>
   <header class="masthead">
@@ -85,13 +85,16 @@
               <button type="button" data-tab="position" aria-pressed="true">Position</button>
               <button type="button" data-tab="velocity" aria-pressed="false">Velocity</button>
               <button type="button" data-tab="trajectory" aria-pressed="false">Trajectory</button>
+              <button type="button" data-tab="density" aria-pressed="false">Densities</button>
             </div>
             <div class="graph-key" aria-label="Graph legend">
-              <span class="graph-forecast">Forecast <var>z̄<sub>k</sub><sup>f</sup></var></span>
+              <span id="graph-forecast" class="graph-forecast">Forecast <var>z̄<sub>k</sub><sup>f</sup></var></span>
               <span class="graph-observation" id="graph-observation">Observation <var>y<sup>obs</sup>(t<sub>k</sub>)</var></span>
               <span class="graph-observation" id="graph-initial" hidden>Initial velocity <var id="initial-velocity-value">0</var></span>
-              <span class="graph-analysis">Analysis <var>z̄<sub>k</sub><sup>a</sup></var></span>
+              <span id="graph-analysis" class="graph-analysis">Analysis <var>z̄<sub>k</sub><sup>a</sup></var></span>
+              <span id="graph-density-initial" class="graph-analysis" hidden>Initial estimate</span>
             </div>
+            <div id="density-charts" class="density-charts" aria-label="Gaussian marginals" hidden></div>
             <canvas id="chart-a" class="chart" role="img"></canvas>
             <canvas id="chart-b" class="chart" role="img"></canvas>
             <p id="chart-note" class="note"></p>

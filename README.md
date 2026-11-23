@@ -111,7 +111,7 @@ npx cf analytics-engine sql query --body "SELECT blob2 AS view, round(sum(double
 
 ## Explore the lab
 
-- **Simulation.** Play or scrub the video, enter an exact frame, and click a track. Compare the cyan forecast, yellow observation, and green analysis. Open Position, Velocity, or Trajectory and choose **Expand** for a larger graph.
+- **Simulation.** Play or scrub the video, enter an exact frame, and click a track. Compare the cyan forecast, yellow observation, and green analysis. Open Position, Velocity, Trajectory, or Densities and choose **Expand** for larger graphs. Densities shows the six Gaussian marginals at the current frame.
 - **Model.** Follow the notation of Reich and Cotter's §6.1 and Algorithm 6.3. The view shows the forecast and analysis equations and the matrices used by the selected run.
 - **Settings.** Change the simulated outages and measurement noise, then compute a new scenario from your settings.
 

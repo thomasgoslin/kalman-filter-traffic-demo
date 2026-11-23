@@ -22,7 +22,7 @@ const events = {
   speed_change:        {value: one, detail: /^\d(\.\d{1,2})?$/, needsDetail: true},
   seek:                {value: one, detail: new Set(["timeline", "frame_input", "chart", "restart"]), needsDetail: true},
   track_select:        {value: one},
-  chart_tab:           {value: one, detail: new Set(["position", "velocity", "trajectory"]), needsDetail: true},
+  chart_tab:           {value: one, detail: new Set(["position", "velocity", "trajectory", "density"]), needsDetail: true},
   chart_expand:        {value: one},
   scenario_change:     {value: one, detail: new Set(["preset", "custom"]), needsDetail: true},
   experiment_start:    {value: one, detail: mix, needsDetail: true},

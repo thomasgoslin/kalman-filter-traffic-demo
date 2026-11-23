@@ -305,11 +305,118 @@ function trajectory(canvas) {
   canvas.frameAt = null;
 }
 
+const densityCoordinates = [
+  ["Center x", "px"], ["Center y", "px"],
+  ["Width", "px"], ["Height", "px"],
+  ["Velocity x", "px/frame"], ["Velocity y", "px/frame"],
+];
+const densityGrid = $("density-charts");
+const densityCanvases = densityCoordinates.map(() => {
+  const canvas = document.createElement("canvas");
+  canvas.setAttribute("role", "img");
+  densityGrid.append(canvas);
+  return canvas;
+});
+
+function densityChart(canvas, coordinate, record) {
+  const surface = setupCanvas(canvas);
+  if (!surface) return;
+  const {ctx, width, height} = surface;
+  const [title, unit] = densityCoordinates[coordinate];
+  const descriptions = [
+    {label:"Forecast", mean:record.x_pred, covariance:record.P_pred, color:plotColors.forecast, dashed:true},
+    ...(record.status === "updated" || record.status === "initialized" ? [{
+      label:record.status === "initialized" ? "Initial estimate" : "Analysis",
+      mean:record.x_current, covariance:record.P_current, color:plotColors.corrected, dashed:false,
+    }] : []),
+  ];
+  const curves = descriptions.flatMap(({label, mean, covariance, color, dashed}) => {
+    const mu = mean?.[coordinate], variance = covariance?.[coordinate]?.[coordinate];
+    return Number.isFinite(mu) && Number.isFinite(variance)
+      ? [{label, mu, sigma:Math.sqrt(Math.max(0, variance)), color, dashed}]
+      : [];
+  });
+  canvas.setAttribute("aria-label", title + " (" + unit + "). " + curves.map(curve =>
+    curve.label + " mean " + curve.mu.toFixed(2) + ", standard deviation " + curve.sigma.toFixed(2)
+  ).join(". "));
+  if (!curves.length) return;
+
+  const left = 8, right = width - 8, top = 49, bottom = height - 19;
+  const low = Math.min(...curves.map(({mu, sigma}) => mu - 4 * sigma));
+  const high = Math.max(...curves.map(({mu, sigma}) => mu + 4 * sigma));
+  const pad = Math.max((high - low) * 0.04, 0.0001);
+  const x = value => left + (value - low + pad) / (high - low + 2 * pad) * (right - left);
+  const positiveSpreads = curves.map(curve => curve.sigma).filter(sigma => sigma > 0);
+  const smallestSpread = Math.min(...positiveSpreads);
+  const short = value => Number(value.toPrecision(5)).toString();
+
+  ctx.fillStyle = theme("ink");
+  ctx.font = "11px " + mono;
+  ctx.fillText(title + " (" + unit + ")", left, 14, right - left);
+  ctx.font = "10px " + mono;
+  curves.forEach(({mu, sigma, color}, index) => {
+    ctx.fillStyle = color;
+    ctx.fillText("μ " + short(mu) + "   σ " + short(sigma), left, 28 + index * 13, right - left);
+  });
+  ctx.strokeStyle = theme("plot-grid");
+  ctx.beginPath(); ctx.moveTo(left, bottom); ctx.lineTo(right, bottom); ctx.stroke();
+  ctx.fillStyle = theme("muted-ink");
+  ctx.fillText(short(low - pad), left, height - 5, (right - left) * 0.45);
+  ctx.textAlign = "right";
+  ctx.fillText(short(high + pad), right, height - 5, (right - left) * 0.45);
+  ctx.textAlign = "left";
+
+  for (const {mu, sigma, color, dashed} of curves) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash(dashed ? [4, 2] : []);
+    ctx.beginPath();
+    if (sigma === 0) {
+      ctx.moveTo(x(mu), bottom);
+      ctx.lineTo(x(mu), top);
+    } else {
+      for (let i = 0; i <= 60; i++) {
+        const z = i / 60 * 8 - 4;
+        const relativeDensity = smallestSpread / sigma * Math.exp(-0.5 * z * z);
+        ctx[i ? "lineTo" : "moveTo"](x(mu + z * sigma), bottom - relativeDensity * (bottom - top));
+      }
+    }
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+}
+
+function renderDensities(record) {
+  const available = record && record.status !== "expired";
+  densityGrid.hidden = !available;
+  if (!available) {
+    $("chart-note").textContent = "Choose a frame within this track to see its distributions.";
+    return;
+  }
+  densityCanvases.forEach((canvas, coordinate) => densityChart(canvas, coordinate, record));
+  const explanation = record.status === "predicted" ? "Forecast only on this frame. "
+    : record.status === "initialized" ? "The first detection initializes the state. " : "";
+  $("chart-note").textContent = explanation
+    + "Each curve is a Gaussian marginal at frame " + frame
+    + ". μ is its mean and σ its standard deviation. A vertical line represents zero variance.";
+}
+
 function renderCharts() {
   const a = $("chart-a"), b = $("chart-b");
-  b.hidden = tab === "trajectory";
-  $("graph-observation").hidden = tab === "velocity";
+  const densities = tab === "density";
+  const record = densities ? activeRecord() : null;
+  a.hidden = densities;
+  b.hidden = densities || tab === "trajectory";
+  $("graph-observation").hidden = densities || tab === "velocity";
   $("graph-initial").hidden = tab !== "velocity";
+  $("graph-forecast").hidden = densities && !record?.x_pred;
+  $("graph-analysis").hidden = densities && record?.status !== "updated";
+  $("graph-density-initial").hidden = !densities || record?.status !== "initialized";
+  densityGrid.hidden = true;
+  if (densities) {
+    renderDensities(record);
+    return;
+  }
   const level = coverage();
   const band = "The " + level.percent + "% band shows z̄ᵢ ± " + Number(level.normal.toFixed(3)) + "√Pᵢᵢ.";
   if (tab === "trajectory") {
@@ -621,7 +728,9 @@ if (video.requestVideoFrameCallback) {
   });
 }
 new ResizeObserver(() => { drawOverlay(); if (history) renderCharts(); }).observe(stage);
-new ResizeObserver(() => { if (history) renderCharts(); }).observe($("chart-a"));
+const chartResize = new ResizeObserver(() => { if (history) renderCharts(); });
+chartResize.observe($("chart-a"));
+chartResize.observe(densityCanvases[0]);
 
 const navLinks = [...document.querySelectorAll(".lab-nav a")];
 
